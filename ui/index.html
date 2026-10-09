@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Shut</title>
+<style>
+  :root{
+    --glass: rgba(255,255,255,.08);
+    --glass-strong: rgba(255,255,255,.12);
+    --border: rgba(255,255,255,.16);
+    --text: #e8ecf4;
+    --dim: #9aa4b8;
+    --accent: #7c8cff;
+    --green: #34d399;
+    --red: #f87171;
+    --amber: #fbbf24;
+    --r: 18px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    font-family:'Segoe UI','Yu Gothic UI','Meiryo UI','Hiragino Kaku Gothic ProN',sans-serif;
+    color:var(--text);
+    min-height:100vh;
+    background:
+      radial-gradient(60% 50% at 15% 0%, rgba(124,140,255,.35), transparent 60%),
+      radial-gradient(50% 40% at 90% 10%, rgba(56,189,248,.28), transparent 60%),
+      radial-gradient(70% 60% at 50% 110%, rgba(168,85,247,.25), transparent 60%),
+      #0b1120;
+    padding:14px;
+  }
+  .wrap{max-width:820px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+  .card{
+    background:var(--glass);
+    border:1px solid var(--border);
+    border-radius:var(--r);
+    backdrop-filter:blur(20px) saturate(140%);
+    -webkit-backdrop-filter:blur(20px) saturate(140%);
+    box-shadow:0 8px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.08);
+    padding:16px 18px;
+  }
+  h1{font-size:22px;letter-spacing:.5px}
+  h2{font-size:14px;color:var(--dim);font-weight:600;margin-bottom:10px;text-transform:uppercase;letter-spacing:.08em}
+  .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .grow{flex:1}
+  .dim{color:var(--dim);font-size:12.5px}
+  header.card{display:flex;align-items:center;gap:12px}
+  .pill{padding:5px 14px;border-radius:999px;font-size:13px;font-weight:700;border:1px solid var(--border)}
+  .pill.config{color:var(--dim)}
+  .pill.armed{color:#052e16;background:var(--green);border-color:transparent}
+  .pill.countdown{color:#450a0a;background:var(--red);border-color:transparent;animation:pulse 1s infinite}
+  .pill.done{color:var(--dim)}
+  @keyframes pulse{50%{opacity:.55}}
+  label.item{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14.5px;padding:4px 0}
+  input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent);cursor:pointer}
+  input[type=radio]{accent-color:var(--accent)}
+  input[type=text],input[type=number]{
+    background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:10px;
+    color:var(--text);padding:8px 11px;font-size:14px;outline:none;width:100%;
+  }
+  input[type=text]:focus,input[type=number]:focus{border-color:var(--accent)}
+  input.w-short{width:90px}
+  input.w-mid{width:140px}
+  input:disabled{opacity:.45}
+  .sub{margin:6px 0 2px 26px;display:flex;flex-direction:column;gap:7px}
+  .btn{
+    background:var(--glass-strong);border:1px solid var(--border);color:var(--text);
+    border-radius:12px;padding:10px 18px;font-size:14.5px;font-weight:600;cursor:pointer;
+    backdrop-filter:blur(8px);transition:background .15s,transform .05s;
+  }
+  .btn:hover{background:rgba(255,255,255,.2)}
+  .btn:active{transform:scale(.97)}
+  .btn.primary{background:linear-gradient(135deg,#6366f1,#8b5cf6);border-color:transparent}
+  .btn.primary:hover{filter:brightness(1.15)}
+  .btn.danger{background:linear-gradient(135deg,#ef4444,#dc2626);border-color:transparent}
+  .btn.sm{padding:7px 12px;font-size:13px;border-radius:10px}
+  .sep{height:1px;background:var(--border);margin:10px 0}
+  .kv{display:flex;flex-direction:column;gap:4px;font-size:14px}
+  .url{font-family:Consolas,monospace;font-size:13px;word-break:break-all;color:#a5b4fc}
+  .seg{display:inline-flex;background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .seg button{background:none;border:none;color:var(--dim);padding:7px 14px;font-size:13px;cursor:pointer}
+  .seg button.on{background:var(--accent);color:#0b1120;font-weight:700}
+  #qr{background:#fff;border-radius:14px;padding:8px;display:none}
+  #qr img{display:block;width:200px;height:200px}
+  /* 画面ミラー */
+  #screen{position:relative;width:100%;border-radius:14px;overflow:hidden;background:#000;touch-action:none;user-select:none;-webkit-user-select:none}
+  #view{position:relative;transform-origin:0 0}
+  #view img{display:block;width:100%;pointer-events:none;-webkit-user-drag:none}
+  #screen:fullscreen{border-radius:0;display:flex;align-items:center;justify-content:center}
+  #screen:fullscreen #view{width:auto}
+  #screen:fullscreen #view img{width:auto;height:auto;max-width:100vw;max-height:100vh}
+  #touch{position:absolute;inset:0}
+  #fs_float{position:absolute;top:10px;right:10px;z-index:20;opacity:.55;padding:8px 12px;font-size:16px}
+  #fs_float:hover{opacity:1}
+  .conn{width:9px;height:9px;border-radius:50%;display:inline-block;background:var(--green)}
+  .conn.bad{background:var(--red)}
+  .kbdrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  /* カウントダウンオーバーレイ */
+  #cd{position:fixed;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:18px;
+    background:rgba(20,5,8,.55);backdrop-filter:blur(24px);z-index:50;text-align:center;padding:20px}
+  #cd.show{display:flex}
+  /* 認証オーバーレイ */
+  #auth{position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+    background:rgba(5,8,18,.82);backdrop-filter:blur(20px);z-index:100;padding:20px}
+  #auth.show{display:flex}
+  #auth .card{max-width:400px;width:100%;display:flex;flex-direction:column;gap:12px}
+  #cdnum{font-size:min(40vw,180px);font-weight:800;color:var(--red);line-height:1;text-shadow:0 0 60px rgba(248,113,113,.5)}
+  #cdreason{color:var(--dim);max-width:400px}
+  .err{color:var(--red);font-size:13.5px}
+  .statusline{font-size:14px;padding:3px 0}
+  footer{color:var(--dim);font-size:11.5px;text-align:center;padding:6px 0 18px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="card">
+    <h1>Shut</h1>
+    <span id="conn" class="conn" title="接続状態"></span>
+    <span id="pill" class="pill config">待機中</span>
+    <span class="grow"></span>
+    <span id="clock" class="dim"></span>
+  </header>
+
+  <div class="card">
+    <h2>トリガー条件（いずれか成立で発火）</h2>
+    <label class="item"><input type="checkbox" id="s_timer"> タイマー</label>
+    <div class="sub" id="timer_sub" style="display:none">
+      <label class="item"><input type="radio" name="tm" id="tm_at"> 時刻指定 <input type="text" id="s_at" class="w-short" placeholder="23:30"></label>
+      <label class="item"><input type="radio" name="tm" id="tm_after"> あと <input type="number" id="s_after" class="w-short" min="1" max="4320"> 分</label>
+    </div>
+    <label class="item"><input type="checkbox" id="s_fw"> セッションログ監視（Claude Code / Codex / Devin の終了検知）</label>
+    <div class="sub" id="fw_sub" style="display:none">
+      <input type="text" id="s_dirs" spellcheck="false">
+      <div class="row dim">最終更新から <input type="number" id="s_idle" class="w-short" min="1" max="600" style="width:70px"> 分経過で発火</div>
+      <div id="fw_now" class="dim"></div>
+    </div>
+    <label class="item"><input type="checkbox" id="s_ext"> 外部トリガー（<code>shut done</code> で発火）</label>
+    <div class="sep"></div>
+    <div class="row">
+      <span class="dim">発火後の猶予 <input type="number" id="s_cd" class="w-short" min="10" max="600" style="width:70px"> 秒</span>
+      <label class="item"><input type="checkbox" id="s_force"> 強制終了 (/f)</label>
+    </div>
+    <div class="sep"></div>
+    <div class="row">
+      <button class="btn primary" id="btn_arm">監視開始</button>
+      <button class="btn" id="btn_disarm" style="display:none">監視を中止</button>
+      <button class="btn" id="btn_test">カウントダウンのテスト</button>
+      <span id="arm_err" class="err"></span>
+    </div>
+  </div>
+
+  <div class="card" id="status_card" style="display:none">
+    <h2>監視ステータス</h2>
+    <div id="status_lines" class="kv"></div>
+  </div>
+
+  <div class="card">
+    <h2>リモートアクセス</h2>
+    <div class="kv">
+      <div class="row"><span class="dim" style="min-width:52px">LAN</span><span class="url" id="lan_url"></span><button class="btn sm" id="copy_lan">コピー</button></div>
+      <div class="row">
+        <span class="dim" style="min-width:52px">WAN</span>
+        <span id="wan_area" class="row grow"><button class="btn sm" id="btn_tunnel">トンネル開始</button><span id="tun_status" class="dim"></span></span>
+      </div>
+      <div class="row"><span class="dim" style="min-width:52px">トークン</span><code class="url" id="tok_txt"></code><button class="btn sm" id="copy_tok">コピー</button></div>
+      <div class="row" style="margin-top:6px">
+        <div class="seg">
+          <button id="seg_lan" class="on">LAN</button><button id="seg_wan">WAN</button>
+        </div>
+        <div id="qr"><img id="qrimg" alt="QR"></div>
+      </div>
+      <div class="dim">視聴中: <span id="clients">0</span> 台</div>
+    </div>
+    <div class="sep"></div>
+    <div class="row">
+      <label class="item"><input type="checkbox" id="s_mirror"> 画面ミラー許可</label>
+      <label class="item"><input type="checkbox" id="s_ctrl"> リモート操作許可</label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>画面 <span class="dim" style="text-transform:none;font-weight:400;font-size:12px">タップ=クリック / 長押し=右クリック / ダブルタップ=ダブルクリック / 2本指=ズーム・移動</span></h2>
+    <div class="row" style="margin-bottom:8px">
+      <label class="item"><input type="checkbox" id="show_mirror" checked> ミラー</label>
+      <button class="btn sm" id="mode_btn">操作: スクロール</button>
+      <div class="seg">
+        <button id="q_low">低</button><button id="q_mid" class="on">中</button><button id="q_high">高</button>
+      </div>
+      <button class="btn sm" id="zoom_reset" style="display:none">ズーム解除</button>
+      <span class="seg" id="seg_mon" style="display:none"></span>
+      <span class="grow"></span>
+      <button class="btn sm" id="fs_btn">⛶ 全画面</button>
+    </div>
+    <div id="screen"><div id="view"><img id="mjpeg" alt=""><div id="touch"></div></div><button class="btn sm" id="fs_float">⛶</button></div>
+    <div id="mir_off" class="dim" style="display:none;margin-top:6px">ミラー配信は設定で無効化されています</div>
+    <div id="ctrl_off" class="dim" style="display:none;margin-top:6px">リモート操作は設定で無効化されています（視聴のみ）</div>
+    <div class="kbdrow">
+      <input type="text" id="kbd" class="grow" placeholder="キーボード入力 → 送信でタイプ">
+      <button class="btn sm" id="kbd_send">送信</button>
+      <button class="btn sm" data-k="Enter">Enter</button>
+      <button class="btn sm" data-k="Backspace">Bksp</button>
+      <button class="btn sm" data-k="Tab">Tab</button>
+      <button class="btn sm" data-k="Escape">Esc</button>
+    </div>
+    <div class="kbdrow">
+      <button class="btn sm" data-k="Win">Win</button>
+      <button class="btn sm" data-k="Delete">Del</button>
+      <button class="btn sm" data-k="Space">Space</button>
+      <button class="btn sm" data-k="Home">Home</button>
+      <button class="btn sm" data-k="End">End</button>
+      <button class="btn sm" data-k="Up">↑</button>
+      <button class="btn sm" data-k="Down">↓</button>
+      <button class="btn sm" data-k="Left">←</button>
+      <button class="btn sm" data-k="Right">→</button>
+      <span class="grow"></span>
+      <button class="btn danger sm" id="btn_sd">今すぐシャットダウン</button>
+    </div>
+  </div>
+
+  <footer>Shut — token で保護されています。URLを共有しないでください。</footer>
+</div>
+
+<div id="cd">
+  <div id="cdnum">60</div>
+  <div style="font-size:18px">秒後にシャットダウン</div>
+  <div id="cdreason"></div>
+  <div class="row" style="justify-content:center">
+    <button class="btn danger" id="cd_cancel" style="font-size:18px;padding:14px 34px">キャンセル</button>
+    <button class="btn" id="cd_now">今すぐ実行</button>
+  </div>
+</div>
+
+<div id="auth">
+  <div class="card">
+    <h2>認証が必要です</h2>
+    <p class="dim">PCのShut画面「リモートアクセス」に表示されている接続URL、またはトークンを入力してください。</p>
+    <input type="text" id="auth_in" placeholder="接続URLまたはトークン" spellcheck="false" autocomplete="off">
+    <button class="btn primary" id="auth_go">接続</button>
+    <div id="auth_err" class="err"></div>
+  </div>
+</div>
+
+<script>
+const qs = new URLSearchParams(location.search);
+const TOKEN = qs.get('t') || localStorage.getItem('shut_t') || '';
+if (TOKEN) localStorage.setItem('shut_t', TOKEN);
+
+function showAuth(){ $('auth').classList.add('show'); }
+async function api(path, body){
+  const opt = {headers:{'x-shut-token':TOKEN}};
+  if (body){ opt.method='POST'; opt.headers['Content-Type']='application/json'; opt.body=JSON.stringify(body); }
+  else opt.method='POST';
+  const r = await fetch(path, opt);
+  if (r.status===401){ showAuth(); throw new Error('401'); }
+  return r.json().catch(()=>({}));
+}
+const apiGet = async p => {
+  const r = await fetch(p,{headers:{'x-shut-token':TOKEN}});
+  if (r.status===401){ showAuth(); throw new Error('401'); }
+  return r.json();
+};
+const fmt = s => { s=Math.floor(s); const h=Math.floor(s/3600),m=Math.floor(s%3600/60),ss=s%60;
+  return h>0?`${h}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`:`${m}:${String(ss).padStart(2,'0')}`; };
+
+// ---------- 設定UI ----------
+const $ = id => document.getElementById(id);
+let settings = null, armed = false;
+
+function bind(id, key, isNum){
+  $(id).addEventListener('input', e=>{
+    if(!settings || e.target.type==='checkbox') return;
+    settings[key] = isNum ? +e.target.value : e.target.value;
+    saveSoon();
+  });
+  $(id).addEventListener('change', e=>{
+    if(!settings) return;
+    settings[key] = e.target.type==='checkbox' ? e.target.checked
+      : isNum ? +e.target.value : e.target.value;
+    saveSoon();
+  });
+}
+let saveT=null;
+function saveSoon(){ clearTimeout(saveT); saveT=setTimeout(()=>api('/api/settings',settings),400); }
+
+function applySettings(s){
+  settings = s;
+  $('s_timer').checked = s.timer_enabled;
+  $('timer_sub').style.display = s.timer_enabled?'flex':'none';
+  $('tm_at').checked = s.timer_mode==='at_time';
+  $('tm_after').checked = s.timer_mode!=='at_time';
+  $('s_at').value = s.at_time;
+  $('s_after').value = s.after_minutes;
+  $('s_fw').checked = s.filewatch_enabled;
+  $('fw_sub').style.display = s.filewatch_enabled?'flex':'none';
+  $('s_dirs').value = s.watch_dirs;
+  $('s_idle').value = s.file_idle_minutes;
+  $('s_ext').checked = s.trigger_file_enabled;
+  $('s_cd').value = s.countdown_secs;
+  $('s_force').checked = s.force_close;
+  $('s_mirror').checked = s.mirror_enabled;
+  $('s_ctrl').checked = s.control_enabled;
+  document.querySelectorAll('input').forEach(i=>{ if(!['kbd','show_mirror','auth_in'].includes(i.id)) i.disabled = armed; });
+}
+['s_timer','s_at','s_after','s_fw','s_dirs','s_idle','s_ext','s_cd','s_force','s_mirror','s_ctrl']
+  .forEach(id=>bind(id, {s_timer:'timer_enabled',s_at:'at_time',s_after:'after_minutes',s_fw:'filewatch_enabled',s_dirs:'watch_dirs',s_idle:'file_idle_minutes',s_ext:'trigger_file_enabled',s_cd:'countdown_secs',s_force:'force_close',s_mirror:'mirror_enabled',s_ctrl:'control_enabled'}[id],
+  ['s_after','s_idle','s_cd'].includes(id)));
+$('tm_at').addEventListener('change',()=>{settings.timer_mode='at_time';saveSoon()});
+$('tm_after').addEventListener('change',()=>{settings.timer_mode='after_minutes';saveSoon()});
+$('s_timer').addEventListener('change',e=>$('timer_sub').style.display=e.target.checked?'flex':'none');
+$('s_fw').addEventListener('change',e=>$('fw_sub').style.display=e.target.checked?'flex':'none');
+
+// ---------- 認証 ----------
+$('auth_go').onclick = ()=>{
+  let v = $('auth_in').value.trim();
+  const m = v.match(/[?&]t=([^&\s]+)/);
+  if (m) v = m[1];
+  if (!v) return;
+  localStorage.setItem('shut_t', v);
+  const u = new URL(location.href);
+  u.searchParams.set('t', v);
+  location.href = u.toString();
+};
+$('auth_in').addEventListener('keydown', e=>{ if(e.key==='Enter') $('auth_go').click(); });
+
+function copyText(txt, btn){
+  const done = ()=>{ const o=btn.textContent; btn.textContent='コピー済'; setTimeout(()=>btn.textContent=o,1200); };
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(txt).then(done).catch(()=>prompt('コピーしてください',txt));
+  else prompt('コピーしてください', txt);
+}
+
+// ---------- ボタン ----------
+$('btn_arm').onclick = async ()=>{
+  saveSoon(); await new Promise(r=>setTimeout(r,450));
+  const r = await api('/api/arm');
+  $('arm_err').textContent = r.error||'';
+};
+$('btn_disarm').onclick = ()=>api('/api/disarm');
+$('btn_test').onclick = ()=>api('/api/shutdown');
+$('btn_sd').onclick = async ()=>{
+  if(confirm('本当にシャットダウンしますか？')) await api('/api/shutdown');
+};
+$('cd_cancel').onclick = ()=>api('/api/cancel');
+$('cd_now').onclick = ()=>api('/api/shutdown',{now:true});
+
+// ---------- トンネル ----------
+$('btn_tunnel').onclick = ()=>api('/api/tunnel');
+let seg='lan';
+$('seg_lan').onclick=()=>{seg='lan';updQR()};
+$('seg_wan').onclick=()=>{seg='wan';updQR()};
+let curState=null;
+function authed(u){ return u + (u.includes('?')?'&':'?') + 't=' + TOKEN; }
+function updQR(){
+  $('seg_lan').classList.toggle('on',seg==='lan');
+  $('seg_wan').classList.toggle('on',seg==='wan');
+  const u = seg==='lan' ? curState?.lan_url : curState?.tunnel?.url;
+  if(u){ $('qr').style.display='block'; $('qrimg').src='/qr?u='+encodeURIComponent(authed(u))+'&t='+TOKEN; }
+  else $('qr').style.display='none';
+}
+
+// ---------- 画面 ----------
+let dragMode=false;
+$('mode_btn').onclick=e=>{
+  dragMode=!dragMode;
+  e.target.textContent = dragMode?'操作: マウスドラッグ':'操作: スクロール';
+};
+
+// 画質切替
+const QP={low:{w:640,q:40},mid:{w:960,q:55},high:{w:1600,q:72}};
+let qual='mid';
+let curMon=0;
+const inp=o=>api('/input',{m:curMon,...o});  // 入力は表示中モニタの座標系で送る
+const setStream=()=>{
+  if(!$('show_mirror').checked||!TOKEN){ $('mjpeg').removeAttribute('src'); return; }
+  const p=QP[qual];
+  $('mjpeg').src=`/stream.mjpeg?m=${curMon}&w=${p.w}&q=${p.q}&t=${TOKEN}`;
+};
+$('show_mirror').addEventListener('change',setStream);
+['low','mid','high'].forEach(k=>{
+  $('q_'+k).onclick=()=>{
+    qual=k;
+    ['low','mid','high'].forEach(x=>$('q_'+x).classList.toggle('on',x===k));
+    setStream();
+  };
+});
+// ストリーム切断時の自動再接続
+let retryT=null;
+$('mjpeg').addEventListener('error',()=>{
+  clearTimeout(retryT);
+  retryT=setTimeout(()=>{
+    if(!$('show_mirror').checked||!TOKEN)return;
+    if(curState&&curState.settings&&!curState.settings.mirror_enabled)return;
+    const s=$('mjpeg'), p=QP[qual];
+    s.src=`/stream.mjpeg?m=${curMon}&w=${p.w}&q=${p.q}&t=${TOKEN}&r=${Date.now()}`;
+  },1500);
+});
+setStream();
+
+// フルスクリーン（画面内フロートボタンでも解除可）
+const fsToggle=()=>{
+  const sc=$('screen');
+  if(document.fullscreenElement) document.exitFullscreen();
+  else if(sc.requestFullscreen) sc.requestFullscreen();
+  else if(sc.webkitRequestFullscreen) sc.webkitRequestFullscreen();
+};
+$('fs_btn').onclick=fsToggle;
+$('fs_float').onclick=fsToggle;
+document.addEventListener('fullscreenchange',()=>{
+  const f=!!document.fullscreenElement;
+  $('fs_btn').textContent=f?'✕ 閉じる':'⛶ 全画面';
+  $('fs_float').textContent=f?'✕':'⛶';
+});
+
+// ピンチズーム（#viewをtransform。タップ座標はgetBoundingClientRect経由で自動整合）
+const view=$('view');
+let zoom={s:1,x:0,y:0}, pinch=null;
+const ptrs=new Map();
+function applyZoom(){
+  zoom.s=Math.min(5,Math.max(1,zoom.s));
+  if(zoom.s===1){zoom.x=0;zoom.y=0;}
+  view.style.transform=`translate(${zoom.x}px,${zoom.y}px) scale(${zoom.s})`;
+  $('zoom_reset').style.display=zoom.s>1?'':'none';
+}
+$('zoom_reset').onclick=()=>{zoom={s:1,x:0,y:0};applyZoom();};
+
+const touch=$('touch');
+let pdown=null, pressTimer=null, lastMove=0;
+const npos = e => {const r=touch.getBoundingClientRect();return {x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height};};
+touch.addEventListener('pointerdown',e=>{
+  touch.setPointerCapture(e.pointerId);
+  ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(ptrs.size===2){
+    clearTimeout(pressTimer); pdown=null;
+    const [a,b]=[...ptrs.values()];
+    pinch={d0:Math.hypot(a.x-b.x,a.y-b.y)||1,mx:(a.x+b.x)/2,my:(a.y+b.y)/2,s0:zoom.s,x0:zoom.x,y0:zoom.y};
+    return;
+  }
+  if(ptrs.size>2) return;
+  const p=npos(e); pdown={...p,t:Date.now(),moved:false,sentDown:false};
+  pressTimer=setTimeout(()=>{ if(pdown&&!pdown.moved){inp({type:'click',x:p.x,y:p.y,button:'right'}); pdown=null;} },560);
+});
+touch.addEventListener('pointermove',e=>{
+  if(!ptrs.has(e.pointerId))return;
+  ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pinch&&ptrs.size>=2){
+    const [a,b]=[...ptrs.values()];
+    const d=Math.hypot(a.x-b.x,a.y-b.y)||1, mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
+    zoom.s=pinch.s0*d/pinch.d0;
+    const k=zoom.s/pinch.s0;
+    zoom.x=mx-(pinch.mx-pinch.x0)*k;
+    zoom.y=my-(pinch.my-pinch.y0)*k;
+    applyZoom();
+    return;
+  }
+  if(!pdown) return;
+  const p=npos(e);
+  const dx=p.x-pdown.x, dy=p.y-pdown.y;
+  if(Math.hypot(dx*r_w(),dy*r_h())>12){ pdown.moved=true; clearTimeout(pressTimer); }
+  if(!pdown.moved) return;
+  const now=Date.now(); if(now-lastMove<50) return; lastMove=now;
+  if(dragMode){
+    if(!pdown.sentDown){ inp({type:'down',x:p.x,y:p.y}); pdown.sentDown=true; }
+    else inp({type:'move',x:p.x,y:p.y});
+  }else{
+    inp({type:'scroll',x:p.x,y:p.y,dy:(p.y-pdown.y)*24}); pdown.y=p.y;
+  }
+});
+let lastTap=0;
+const endPtr=e=>{
+  ptrs.delete(e.pointerId);
+  if(ptrs.size<2) pinch=null;
+  clearTimeout(pressTimer);
+  if(!pdown) return;
+  const p=npos(e);
+  const isTap = !pdown.moved && !pdown.sentDown && Date.now()-pdown.t<500;
+  if(dragMode && pdown.sentDown){ inp({type:'up',x:p.x,y:p.y}); }
+  else if(isTap){
+    inp({type:'click',x:p.x,y:p.y});
+    const n=Date.now();
+    if(n-lastTap<350) inp({type:'click',x:p.x,y:p.y});
+    lastTap=n;
+  }
+  pdown=null;
+};
+touch.addEventListener('pointerup',endPtr);
+touch.addEventListener('pointercancel',e=>{ptrs.delete(e.pointerId);if(ptrs.size<2)pinch=null;clearTimeout(pressTimer);pdown=null;});
+const r_w=()=>touch.clientWidth, r_h=()=>touch.clientHeight;
+
+document.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>inp({type:'key',key:b.dataset.k}));
+$('kbd_send').onclick=()=>{const t=$('kbd').value; if(t) inp({type:'text',text:t}); $('kbd').value='';};
+$('kbd').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('kbd_send').click();}});
+
+// ---------- ポーリング ----------
+let fails=0;
+async function poll(){
+  try{
+    const st = await apiGet('/api/state');
+    fails=0; $('conn').className='conn';
+    curState = st;
+    armed = st.phase==='armed';
+    const inArm = armed||st.phase==='countdown';
+    if(!settings) applySettings(st.settings);
+
+    const pill=$('pill');
+    pill.className='pill '+st.phase;
+    pill.textContent={config:'待機中',armed:'監視中',countdown:'カウントダウン',done:'実行済み'}[st.phase]||st.phase;
+    $('clock').textContent=new Date().toLocaleTimeString('ja-JP');
+
+    $('btn_arm').style.display = st.phase==='config'?'':'none';
+    $('btn_disarm').style.display = (armed||st.phase==='done')?'':'none';
+    $('btn_disarm').textContent = armed?'監視を中止':'戻る';
+    document.querySelectorAll('input').forEach(i=>{if(!['kbd','show_mirror','auth_in'].includes(i.id))i.disabled=inArm});
+
+    // ステータスカード
+    if(armed||st.phase==='done'){
+      $('status_card').style.display='';
+      const L=[];
+      if(st.phase==='done') L.push(st.reason||'完了');
+      else{
+        if(st.settings.timer_enabled) L.push(`タイマー: 残り ${fmt(st.timer_remain)}（${new Date(st.timer_deadline*1000).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})} に発火）`);
+        if(st.settings.filewatch_enabled){
+          L.push(st.fw.saw_activity
+            ? `ログ監視: 最終更新から ${fmt(st.fw.ago_secs??0)}（閾値 ${st.fw.idle_minutes} 分）`
+            : 'ログ監視: 書き込み待ち（まだ活動なし）');
+        }
+        if(st.settings.trigger_file_enabled) L.push('外部トリガー: 待機中');
+      }
+      $('status_lines').innerHTML=L.map(l=>`<div class="statusline">• ${l}</div>`).join('');
+    } else $('status_card').style.display='none';
+
+    // ミラー/操作の無効化表示
+    $('ctrl_off').style.display = st.settings.control_enabled?'none':'';
+    $('mir_off').style.display = st.settings.mirror_enabled?'none':'';
+    $('touch').style.pointerEvents = st.settings.control_enabled?'auto':'none';
+    if(!st.settings.mirror_enabled) $('mjpeg').removeAttribute('src');
+
+    // モニタ選択（複数ある時だけ表示）
+    const mons=st.monitors||[];
+    if(mons.length>1){
+      $('seg_mon').style.display='';
+      if(curMon>=mons.length) curMon=0;
+      if($('seg_mon').dataset.n!=mons.length){
+        $('seg_mon').dataset.n=mons.length;
+        $('seg_mon').innerHTML=mons.map(m=>`<button data-mi="${m.i}" class="${m.i===curMon?'on':''}" title="${m.w}×${m.h}">M${m.i+1}${m.primary?'（主）':''}</button>`).join('');
+        $('seg_mon').querySelectorAll('button').forEach(b=>b.onclick=()=>{
+          curMon=+b.dataset.mi;
+          zoom={s:1,x:0,y:0}; applyZoom();
+          setStream();
+          $('seg_mon').querySelectorAll('button').forEach(x=>x.classList.toggle('on',+x.dataset.mi===curMon));
+        });
+      }
+    }else $('seg_mon').style.display='none';
+
+    // カウントダウン
+    if(st.phase==='countdown'){
+      $('cd').classList.add('show');
+      $('cdnum').textContent=st.countdown_left;
+      $('cdreason').textContent=st.reason;
+    } else $('cd').classList.remove('show');
+
+    // リモート
+    $('lan_url').textContent = authed(st.lan_url);
+    $('tok_txt').textContent = st.token;
+    $('copy_lan').onclick = e=>copyText(authed(st.lan_url), e.target);
+    $('copy_tok').onclick = e=>copyText(st.token, e.target);
+    const tn=st.tunnel;
+    $('tun_status').textContent =
+      tn.status==='starting'?'起動中…（初回はcloudflaredをDL）':
+      tn.status==='failed'?(tn.error||'失敗'):'';
+    if(tn.status==='running'){
+      $('wan_area').innerHTML=`<span class="url">${authed(tn.url)}</span><button class="btn sm" id="btn_tunnel">停止</button><button class="btn sm" id="copy_wan">コピー</button>`;
+      $('copy_wan').onclick = e=>copyText(authed(tn.url), e.target);
+    }else{
+      $('wan_area').innerHTML=`<button class="btn sm" id="btn_tunnel">トンネル開始</button><span id="tun_status" class="dim">${$('tun_status')?.textContent||''}</span>`;
+    }
+    $('btn_tunnel').onclick=()=>api('/api/tunnel');
+    $('clients').textContent=st.mirror_clients;
+    updQR();
+
+    // 設定フィールドの同期（編集中以外）
+    if(JSON.stringify(st.settings)!==JSON.stringify(settings) && document.activeElement?.type!=='text'&&document.activeElement?.type!=='number'){
+      applySettings(st.settings);
+    }
+  }catch(e){
+    if(e.message!=='401'){
+      fails++;
+      if(fails>=3) $('conn').className='conn bad';
+    }
+  }
+  setTimeout(poll,1000);
+}
+poll();
+</script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+[package]
+name = "shut"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+async-stream = "0.3.6"
+axum = "0.8.9"
+chrono = "0.4.45"
+dirs = "7.0.0"
+image = "0.24.9"
+qrcode = "0.14.1"
+rand = "0.10.3"
+screenshots = "0.8.10"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+tao = "0.37.1"
+tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros", "time", "sync", "net"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Console", "Win32_System_Threading", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
+wry = "0.57.0"
