@@ -2,20 +2,22 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
-use axum::body::Body;
-use axum::extract::{Query, Request, State};
-use axum::http::{header, HeaderMap, StatusCode};
+use axum::body::{Body, Bytes};
+use axum::extract::{DefaultBodyLimit, Query, Request, State};
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::json;
 
+use crate::power;
 use crate::remote::{self, InputEvent};
 use crate::state::{AppState, Phase, Settings, TunnelState};
-use crate::power;
 
 const INDEX_HTML: &str = include_str!("../ui/index.html");
+const SHELL_CSS: &str = include_str!("../ui/shell.css");
+const SHELL_JS: &str = include_str!("../ui/shell.js");
 
 pub struct ServerCtx {
     pub state: AppState,
@@ -29,6 +31,27 @@ type Ctx = Arc<ServerCtx>;
 pub fn router(ctx: Ctx) -> Router {
     Router::new()
         .route("/", get(index))
+        .route(
+            "/shell.css",
+            get(|| async {
+                (
+                    [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
+                    SHELL_CSS,
+                )
+            }),
+        )
+        .route(
+            "/shell.js",
+            get(|| async {
+                (
+                    [(
+                        header::CONTENT_TYPE,
+                        "application/javascript; charset=utf-8",
+                    )],
+                    SHELL_JS,
+                )
+            }),
+        )
         .route("/api/state", get(api_state))
         .route("/api/settings", post(api_settings))
         .route("/api/arm", post(api_arm))
@@ -37,6 +60,14 @@ pub fn router(ctx: Ctx) -> Router {
         .route("/api/cancel", post(api_cancel))
         .route("/api/tunnel", post(api_tunnel))
         .route("/input", post(api_input))
+        .route(
+            "/api/clipboard",
+            get(api_clipboard_get).post(api_clipboard_set),
+        )
+        .route(
+            "/api/upload",
+            post(api_upload).route_layer(DefaultBodyLimit::max(256 * 1024 * 1024)),
+        )
         .route("/stream.mjpeg", get(mjpeg))
         .route("/qr", get(qr))
         .layer(middleware::from_fn_with_state(ctx.clone(), auth))
@@ -53,7 +84,7 @@ async fn auth(
     next: Next,
 ) -> Response {
     // ページ本体は無認証で配信し、トークン入力UIに繋げる（APIは全て認証必須）
-    if req.uri().path() == "/" {
+    if matches!(req.uri().path(), "/" | "/shell.css" | "/shell.js") {
         return next.run(req).await;
     }
     let ok = q.get("t").is_some_and(|t| *t == ctx.token)
@@ -99,9 +130,7 @@ async fn api_state(State(ctx): State<Ctx>) -> Json<serde_json::Value> {
         Phase::Countdown { deadline, reason } => (
             "countdown",
             reason.clone(),
-            deadline
-                .saturating_duration_since(Instant::now())
-                .as_secs(),
+            deadline.saturating_duration_since(Instant::now()).as_secs(),
             None,
             None,
         ),
@@ -129,6 +158,7 @@ async fn api_state(State(ctx): State<Ctx>) -> Json<serde_json::Value> {
         },
         "tunnel": {"status": tunnel_status, "url": tunnel_url, "error": tunnel_error},
         "monitors": remote::monitor_list(),
+        "cursor": remote::cursor_info(),
         "mirror_clients": st.mirror_clients,
         "lan_url": ctx.lan_url,
         "token": ctx.token,
@@ -137,10 +167,7 @@ async fn api_state(State(ctx): State<Ctx>) -> Json<serde_json::Value> {
     }))
 }
 
-async fn api_settings(
-    State(ctx): State<Ctx>,
-    Json(settings): Json<Settings>,
-) -> impl IntoResponse {
+async fn api_settings(State(ctx): State<Ctx>, Json(settings): Json<Settings>) -> impl IntoResponse {
     let mut st = ctx.state.lock().unwrap();
     st.settings = settings;
     st.settings.save();
@@ -159,10 +186,7 @@ async fn api_disarm(State(ctx): State<Ctx>) -> impl IntoResponse {
     Json(json!({"ok": true}))
 }
 
-async fn api_shutdown(
-    State(ctx): State<Ctx>,
-    body: Option<Json<serde_json::Value>>,
-) -> Response {
+async fn api_shutdown(State(ctx): State<Ctx>, body: Option<Json<serde_json::Value>>) -> Response {
     let now = body
         .and_then(|v| v.get("now").and_then(|b| b.as_bool()))
         .unwrap_or(false);
@@ -208,15 +232,139 @@ async fn api_tunnel(State(ctx): State<Ctx>) -> impl IntoResponse {
     Json(json!({"ok": true}))
 }
 
-async fn api_input(
-    State(ctx): State<Ctx>,
-    Json(ev): Json<InputEvent>,
-) -> impl IntoResponse {
+async fn api_input(State(ctx): State<Ctx>, Json(ev): Json<InputEvent>) -> impl IntoResponse {
     if !ctx.state.lock().unwrap().settings.control_enabled {
-        return (StatusCode::FORBIDDEN, Json(json!({"error": "control disabled"}))).into_response();
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "control disabled"})),
+        )
+            .into_response();
     }
-    remote::handle_input(&ev);
-    Json(json!({"ok": true})).into_response()
+    // SendInputは呼び出しスレッドをブロックするため、ワーカースレッドで実行する
+    let result = tokio::task::spawn_blocking(move || remote::handle_input(&ev)).await;
+    match result {
+        Ok(Ok(())) => Json(json!({"ok": true})).into_response(),
+        Ok(Err(error)) => {
+            let status = match error {
+                remote::InputError::Invalid(_) => StatusCode::BAD_REQUEST,
+                remote::InputError::Injection => StatusCode::UNPROCESSABLE_ENTITY,
+            };
+            (status, Json(json!({"error": error.message()}))).into_response()
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": format!("入力スレッドの実行に失敗: {e}")})),
+        )
+            .into_response(),
+    }
+}
+
+// ---------- クリップボード・ファイル ----------
+
+async fn api_clipboard_get() -> impl IntoResponse {
+    match tokio::task::spawn_blocking(remote::clipboard_get).await {
+        Ok(Ok(text)) => Json(json!({"ok": true, "text": text})).into_response(),
+        Ok(Err(e)) => (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({"error": e}))).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn api_clipboard_set(Json(body): Json<serde_json::Value>) -> impl IntoResponse {
+    let Some(text) = body.get("text").and_then(|v| v.as_str()) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "text が必要です"})),
+        )
+            .into_response();
+    };
+    if text.encode_utf16().count() > 262144 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "長すぎます（256Ki UTF-16単位まで）"})),
+        )
+            .into_response();
+    }
+    let text = text.to_string();
+    match tokio::task::spawn_blocking(move || remote::clipboard_set(&text)).await {
+        Ok(Ok(())) => Json(json!({"ok": true})).into_response(),
+        Ok(Err(e)) => (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({"error": e}))).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+/// 端末からPCへファイルを保存する。保存先は %LOCALAPPDATA%\Shut\incoming
+async fn api_upload(Query(q): Query<HashMap<String, String>>, body: Bytes) -> impl IntoResponse {
+    let raw = q.get("name").map(|s| s.as_str()).unwrap_or("file.bin");
+    // パス区切り・危険文字を除いたファイル名だけを使う
+    let base = raw
+        .rsplit(['\\', '/'])
+        .next()
+        .unwrap_or("file.bin")
+        .chars()
+        .map(|c| match c {
+            '<' | '>' | ':' | '"' | '|' | '?' | '*' => '_',
+            c if c.is_control() => '_',
+            c => c,
+        })
+        .collect::<String>()
+        .trim_matches([' ', '.'])
+        .chars()
+        .take(120)
+        .collect::<String>();
+    let name = if base.is_empty() { "file.bin" } else { &base };
+    let dir = crate::data_dir().join("incoming");
+    if std::fs::create_dir_all(&dir).is_err() {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "保存先を作成できませんでした"})),
+        )
+            .into_response();
+    }
+    // 同名は -1, -2 … を付ける
+    let mut path = dir.join(name);
+    for i in 1..1000 {
+        if !path.exists() {
+            break;
+        }
+        let stem = std::path::Path::new(name)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("file");
+        let ext = std::path::Path::new(name)
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|e| format!(".{e}"))
+            .unwrap_or_default();
+        path = dir.join(format!("{stem}-{i}{ext}"));
+    }
+    let path_str = path.to_string_lossy().to_string();
+    let len = body.len();
+    match tokio::task::spawn_blocking(move || std::fs::write(&path, &body)).await {
+        Ok(Ok(())) => Json(json!({
+            "ok": true,
+            "path": path_str,
+            "bytes": len,
+        }))
+        .into_response(),
+        Ok(Err(e)) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": format!("保存に失敗しました: {e}")})),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": format!("保存に失敗しました: {e}")})),
+        )
+            .into_response(),
+    }
 }
 
 // ---------- ミラー配信 ----------
@@ -239,10 +387,7 @@ async fn mjpeg(
     }
     ctx.state.lock().unwrap().mirror_clients += 1;
     let state = ctx.state.clone();
-    let m: usize = params
-        .get("m")
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0);
+    let m: usize = params.get("m").and_then(|v| v.parse().ok()).unwrap_or(0);
     let w: u32 = params
         .get("w")
         .and_then(|v| v.parse().ok())
@@ -271,7 +416,7 @@ async fn mjpeg(
                 yield Ok(jpeg);
                 yield Ok(b"\r\n".to_vec());
                 if !first {
-                    tokio::time::sleep(Duration::from_millis(120)).await;
+                    tokio::time::sleep(Duration::from_millis(60)).await;
                 }
                 first = false;
             } else {
@@ -281,7 +426,10 @@ async fn mjpeg(
     };
 
     Response::builder()
-        .header(header::CONTENT_TYPE, "multipart/x-mixed-replace;boundary=frame")
+        .header(
+            header::CONTENT_TYPE,
+            "multipart/x-mixed-replace;boundary=frame",
+        )
         .header(header::CACHE_CONTROL, "no-cache")
         .body(Body::from_stream(stream))
         .unwrap()

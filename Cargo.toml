@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+arboard = "3.6.3"
 async-stream = "0.3.6"
 axum = "0.8.9"
 chrono = "0.4.45"

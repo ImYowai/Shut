@@ -68,7 +68,10 @@ fn bind_listener() -> (TcpListener, u16) {
         }
     }
     TcpListener::bind(("0.0.0.0", 0))
-        .map(|l| { let p = l.local_addr().unwrap().port(); (l, p) })
+        .map(|l| {
+            let p = l.local_addr().unwrap().port();
+            (l, p)
+        })
         .expect("no free port")
 }
 
@@ -86,7 +89,12 @@ fn run() {
         .map(|ip| format!("http://{ip}:{port}"))
         .unwrap_or_else(|| format!("http://127.0.0.1:{port}"));
 
-    let ctx = Arc::new(server::ServerCtx { state: state.clone(), token: token.clone(), port, lan_url });
+    let ctx = Arc::new(server::ServerCtx {
+        state: state.clone(),
+        token: token.clone(),
+        port,
+        lan_url,
+    });
 
     // トリガー評価＆シャットダウン実行スレッド
     std::thread::spawn({
@@ -155,18 +163,16 @@ fn eval_loop(state: AppState) {
                     st.fire(reason);
                 }
             }
-            Phase::Countdown { deadline, .. } => {
-                if Instant::now() >= deadline {
-                    match power::shutdown(st.settings.force_close) {
-                        Ok(()) => {
-                            st.phase = Phase::Done {
-                                message: "シャットダウンを実行しました".into(),
-                            }
+            Phase::Countdown { deadline, .. } if Instant::now() >= deadline => {
+                match power::shutdown(st.settings.force_close) {
+                    Ok(()) => {
+                        st.phase = Phase::Done {
+                            message: "シャットダウンを実行しました".into(),
                         }
-                        Err(e) => {
-                            st.phase = Phase::Done {
-                                message: format!("シャットダウンに失敗しました: {e}"),
-                            }
+                    }
+                    Err(e) => {
+                        st.phase = Phase::Done {
+                            message: format!("シャットダウンに失敗しました: {e}"),
                         }
                     }
                 }
@@ -200,7 +206,11 @@ fn open_window(state: &AppState, port: u16, token: &str) {
     let state = state.clone();
     event_loop.run(move |event, _elwt, control_flow| {
         *control_flow = ControlFlow::Wait;
-        if let Event::WindowEvent { event: WindowEvent::CloseRequested, .. } = event {
+        if let Event::WindowEvent {
+            event: WindowEvent::CloseRequested,
+            ..
+        } = event
+        {
             remote::stop_tunnel(&state);
             if let Ok(st) = state.try_lock() {
                 st.settings.save();
@@ -215,7 +225,7 @@ fn open_window(state: &AppState, port: u16, token: &str) {
 /// 二重起動防止用のnamed mutex。起動済みならtrue。
 #[cfg(windows)]
 fn already_running() -> bool {
-    use windows_sys::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS};
+    use windows_sys::Win32::Foundation::{ERROR_ALREADY_EXISTS, GetLastError};
     use windows_sys::Win32::System::Threading::CreateMutexW;
     let name: Vec<u16> = "Local\\ShutSingletonMutex\0".encode_utf16().collect();
     unsafe {
@@ -237,7 +247,7 @@ fn already_running() -> bool {
 /// CLIサブコマンド時は親プロセスのコンソールにアタッチして表示できるようにする。
 #[cfg(windows)]
 fn attach_console() {
-    use windows_sys::Win32::System::Console::{AttachConsole, ATTACH_PARENT_PROCESS};
+    use windows_sys::Win32::System::Console::{ATTACH_PARENT_PROCESS, AttachConsole};
     unsafe {
         AttachConsole(ATTACH_PARENT_PROCESS);
     }

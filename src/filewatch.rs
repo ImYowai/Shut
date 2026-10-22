@@ -62,15 +62,14 @@ impl FileWatcher {
         self.newest_mtime
             .and_then(|m| SystemTime::now().duration_since(m).ok())
     }
-
 }
 
 fn expand_path(s: &str) -> PathBuf {
     let s = s.trim_matches('"');
-    if let Some(rest) = s.strip_prefix('~') {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(rest.trim_start_matches(['\\', '/']));
-        }
+    if let Some(rest) = s.strip_prefix('~')
+        && let Some(home) = dirs::home_dir()
+    {
+        return home.join(rest.trim_start_matches(['\\', '/']));
     }
     // %VAR% 形式の環境変数を簡易展開
     let mut out = s.to_string();

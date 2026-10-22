@@ -126,9 +126,7 @@ impl Shared {
         if !s.timer_enabled && !s.trigger_file_enabled && !s.filewatch_enabled {
             return Err("トリガー条件を1つ以上有効にしてください".into());
         }
-        if s.filewatch_enabled
-            && s.watch_dirs.split([',', '\n']).all(|d| d.trim().is_empty())
-        {
+        if s.filewatch_enabled && s.watch_dirs.split([',', '\n']).all(|d| d.trim().is_empty()) {
             return Err("監視するディレクトリを入力してください".into());
         }
         let timer_deadline = if s.timer_enabled {
@@ -144,8 +142,7 @@ impl Shared {
 
     pub fn fire(&mut self, reason: String) {
         self.phase = Phase::Countdown {
-            deadline: Instant::now()
-                + Duration::from_secs(self.settings.countdown_secs as u64),
+            deadline: Instant::now() + Duration::from_secs(self.settings.countdown_secs as u64),
             reason,
         };
         let _ = std::fs::remove_file(trigger_file());
@@ -206,7 +203,11 @@ fn timer_deadline(s: &Settings) -> Result<i64, String> {
                     .checked_add_days(chrono::Days::new(1))
                     .ok_or("日付エラー")?;
             }
-            Ok(date.and_time(t).and_local_timezone(Local).unwrap().timestamp())
+            Ok(date
+                .and_time(t)
+                .and_local_timezone(Local)
+                .unwrap()
+                .timestamp())
         }
     }
 }

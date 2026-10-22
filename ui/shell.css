@@ -1,0 +1,254 @@
+/* Shut — 小さな操作室. The remote picture keeps its own geometry. */
+body.sh-shell{
+  --glass:#fffdf7;--glass-strong:#eeeee3;--border:#d9ded2;--text:#263b3b;--dim:#6d7c76;
+  --accent:#678b78;--green:#678b78;--red:#bb6355;--amber:#df875d;--r:20px;
+  --sh-paper:#f5f1e8;--sh-surface:#fffdf7;--sh-ink:#263b3b;--sh-sage:#678b78;
+  --sh-orange:#df875d;--sh-blue:#647f8c;--sh-dock-h:68px;
+  margin:0;padding:0;min-height:0;height:var(--sh-vh,100dvh);overflow:hidden;
+  color:var(--sh-ink);background:var(--sh-paper);font-family:'Segoe UI','Yu Gothic UI','Meiryo UI',sans-serif;
+  -webkit-tap-highlight-color:transparent;
+}
+html:has(body.sh-shell){height:100%;overflow:hidden;overscroll-behavior:none;background:#f5f1e8}
+.sh-shell [hidden]{display:none!important}
+.sh-shell .wrap{max-width:none;height:100%;min-height:0;margin:0;gap:0;overflow:hidden}
+.sh-shell .card{background:var(--sh-surface);border:1px solid var(--border);border-radius:18px;padding:18px;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+.sh-shell .btn,.sh-shell .seg button,.sh-shell .sh-button{
+  min-height:44px;border-radius:12px;border:1px solid var(--border);background:#efeee5;color:var(--sh-ink);
+  padding:10px 14px;font:600 13px/1.3 inherit;box-shadow:0 2px 0 #d5dbce;backdrop-filter:none;
+  transition:background .15s,transform .12s,box-shadow .12s;cursor:pointer;
+}
+.sh-shell .btn:hover,.sh-shell .sh-button:hover{background:#e7ebdf}
+.sh-shell .btn:active,.sh-shell .sh-button:active{transform:translateY(2px);box-shadow:0 0 0 #d5dbce}
+.sh-shell .btn.primary{background:#678b78;color:#fffdf7;border-color:#678b78;box-shadow:0 2px 0 #4c6e5e}
+.sh-shell .btn.primary:hover{background:#597e6a;filter:none}
+.sh-shell .btn.danger{background:#f4e3d8;color:#8b4e3d;border-color:#e6bda8;box-shadow:0 2px 0 #e4c6b5}
+.sh-shell button:disabled{opacity:.42;cursor:default;transform:none}
+.sh-shell :is(button,input,textarea):focus-visible{outline:3px solid #a1b7c1;outline-offset:3px}
+.sh-shell :is(input[type=text],input[type=number],textarea){background:#f7f6ef;border-color:#d1dacc;color:#263b3b;border-radius:12px}
+.sh-shell input[type=checkbox],.sh-shell input[type=radio]{accent-color:#678b78}
+.sh-shell h2{color:#60756c;font-size:12px;letter-spacing:.09em;text-transform:none;line-height:1.7}
+.sh-shell .url{color:#54737c;font-size:12px}
+.sh-shell .dim{color:var(--dim);line-height:1.6}
+.sh-shell .sep{background:#dde1d6;margin:16px 0}
+.sh-shell .seg{background:#edeFE5;border-color:#d8dfd1;border-radius:12px;padding:3px;gap:3px}
+.sh-shell .seg button{border:0;box-shadow:none;border-radius:8px;min-height:36px;padding:7px 12px;font-size:12px;background:transparent}
+.sh-shell .seg button.on{background:#678b78;color:#fffdf7}
+.sh-shell .row{gap:10px}
+.sh-shell label.item{font-size:13px;min-height:38px;line-height:1.6;align-items:center}
+.sh-shell .pill{padding:5px 10px;line-height:1.3;font-size:11px;white-space:nowrap}
+.sh-shell .pill.config,.sh-shell .pill.done{color:#728078;background:#eceee5;border:0}
+.sh-shell .pill.armed{color:#355445;background:#dce9d9}
+.sh-shell .pill.countdown{color:#8b4e3d;background:#f3d9c9;animation:none}
+.sh-shell .conn{background:#678b78;box-shadow:0 0 0 4px #e5ecdd;width:7px;height:7px}
+.sh-shell .conn.bad{background:#bb6355;box-shadow:0 0 0 4px #f3dfd5}
+.sh-shell .sh-header.card{height:56px;min-height:56px;padding:0 24px 0 20px;gap:12px;border:0;border-radius:0;background:var(--sh-paper);box-shadow:inset 0 -1px 0 #e1e3d8;z-index:3}
+.sh-header h1{font-size:19px;letter-spacing:-.5px;font-weight:750}
+.sh-brandmark{width:30px;height:30px;display:grid;place-items:center;color:#678b78}
+.sh-brandmark svg{width:30px;height:30px}
+.sh-header-caption{font-size:10px;letter-spacing:.16em;color:#809087;margin-left:2px;white-space:nowrap}
+.sh-shell #clock{font-variant-numeric:tabular-nums;font-size:11px}
+.sh-header-action{border:0;background:transparent;min-width:44px;height:44px;display:grid;place-items:center;color:#6f8377;border-radius:12px;cursor:pointer}
+.sh-header-action:hover{background:#e9ecdf}
+.sh-icon{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.sh-workbench{position:relative;display:grid;grid-template-columns:76px minmax(0,1fr) 0;flex:1;min-height:0;overflow:hidden}
+.sh-workbench.sh-panel-open{grid-template-columns:76px minmax(0,1fr) 364px}
+.sh-rail{display:flex;flex-direction:column;align-items:center;gap:12px;padding:22px 8px 16px;background:#eef0e5;border-right:1px solid #dde2d6;z-index:3}
+.sh-nav-button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:none;border:0;color:#718175;border-radius:16px;min-height:60px;width:58px;font:600 10px/1.2 inherit;cursor:pointer}
+.sh-nav-button:hover{background:#e2e9d9;color:#456451}
+.sh-nav-button[aria-pressed=true]{background:#dce7d5;color:#355443;box-shadow:inset 0 0 0 1px #cbdac3}
+.sh-rail-note{margin-top:auto;writing-mode:vertical-rl;font-size:9px;letter-spacing:.14em;color:#91a18f}
+.sh-stage{min-width:0;min-height:0;display:flex;flex-direction:column;padding:14px 20px 0;background:#f5f1e8;position:relative}
+.sh-stagebar{display:flex;align-items:center;gap:12px;min-height:44px;margin-bottom:12px}
+.sh-stage-label{display:flex;align-items:center;gap:8px;min-width:0;color:#60776c;font-size:11px;font-weight:600;letter-spacing:.05em;white-space:nowrap}
+.sh-stage-label::before{content:'';width:6px;height:6px;background:#9bb39c;border-radius:50%}
+.sh-stagebar .sh-grow{flex:1}
+.sh-stagebar #fs_btn{font-size:12px;box-shadow:none;border-color:#dce1d5;background:#eeeee4;min-height:38px;padding:8px 12px}
+.sh-stagebar #seg_mon{max-width:42%;overflow:auto;flex-shrink:1;flex-wrap:nowrap}
+.sh-stagebar #seg_mon button{flex-shrink:0;white-space:nowrap}
+.sh-canvas{flex:1;min-height:0;min-width:0;position:relative;display:flex;background:#263b3b;border-radius:18px;overflow:hidden;box-shadow:0 1px 0 #fffef8,0 8px 30px #364d3710}
+.sh-shell #screen{flex:1;min-width:0;min-height:0;height:100%;width:100%;display:flex;align-items:center;justify-content:center;border-radius:0;background:#1f292a;overflow:hidden}
+.sh-shell #view{flex:none;position:relative;width:100%;min-width:0;line-height:0}
+.sh-shell #view img{width:100%;height:100%;object-fit:contain;max-width:none;max-height:none;display:block}
+.sh-shell #touch{z-index:2}
+.sh-shell #screen:fullscreen #view{flex:none}
+.sh-shell #screen:fullscreen #view img{width:100%;height:100%;max-width:none;max-height:none}
+.sh-shell #fs_float{background:#f5f1e8eb;color:#263b3b;border:0;box-shadow:none;opacity:0;min-height:40px;padding:8px;top:10px;right:10px}
+.sh-shell #screen:fullscreen #fs_float,.sh-shell #screen:hover #fs_float,.sh-shell #fs_float:focus-visible{opacity:1}
+.sh-stage-notice{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center;pointer-events:none;background:#edf0e5;color:#6a8172;font-size:12px;line-height:1.8;z-index:4}
+.sh-stage-notice .sh-icon{height:40px;width:40px;stroke-width:1.25;color:#8da28a}
+.sh-stage-notice strong{font-size:15px;color:#435e4d;font-weight:600}
+.sh-stage-flags{position:absolute;bottom:12px;left:12px;right:12px;pointer-events:none;display:flex;justify-content:center;gap:8px;z-index:4}
+.sh-strip{position:absolute;top:16%;bottom:16%;right:8px;width:14px;border-radius:9px;background:#f8f6ecdd;border:1px solid #d5dbc9;z-index:6;touch-action:none;cursor:ns-resize;opacity:.62;transition:opacity .15s,background .15s}
+.sh-strip:hover,.sh-strip.on,.sh-strip:focus-visible{opacity:1}
+.sh-strip-thumb{position:absolute;left:3px;right:3px;top:50%;height:38px;transform:translateY(-50%);border-radius:6px;background:#678b78;box-shadow:0 1px 3px #2d45354d}
+.sh-strip-thumb::after{content:'';position:absolute;left:3px;right:3px;top:9px;bottom:9px;background:repeating-linear-gradient(0deg,#fffdf7a8 0 2px,transparent 2px 6px);border-radius:2px}
+.sh-quickkeys{position:absolute;right:10px;bottom:12px;display:flex;flex-direction:column;gap:7px;z-index:6}
+.sh-qkey{width:46px;height:46px;border-radius:14px;border:1px solid #d5dbc9;background:#f8f6ece8;color:#3d5548;font:600 16px/1 inherit;box-shadow:0 2px 7px #2d45352b;cursor:pointer;transition:transform .08s,background .15s}
+.sh-qkey:hover{background:#eef1e2}
+.sh-qkey:active{transform:translateY(1px) scale(.97)}
+.sh-shell .kmode{margin:2px 0 10px;align-self:flex-start}
+.sh-shell #klive{display:flex;flex-direction:column;gap:0;margin:0}
+.sh-shell #klive .dim{font-size:10px}
+.sh-shell .composer .row .btn.sm{font-size:11px;min-height:40px;padding:8px 10px}
+.sh-stage-flags .dim{background:#f5f1e8e8;border:1px solid #d9dfd2;border-radius:10px;padding:7px 11px;color:#526d5d;font-size:11px}
+.sh-stage-flags #mir_off{display:none!important}
+.sh-cursor{position:absolute;left:50%;top:50%;width:23px;height:28px;filter:drop-shadow(0 1px 2px #19282980);z-index:3;pointer-events:none;line-height:0;transition:opacity .12s}
+.sh-cursor svg{width:23px;height:28px;fill:#fffdf5;stroke:#263b3b;stroke-width:1.6}
+.sh-cursor.sh-cursor-held svg{fill:#df875d}
+.sh-stage-action{display:grid;place-items:center;min-width:38px;height:38px;padding:8px;background:#eeeee4;border:1px solid #dce1d5;border-radius:12px;color:#6f8377;box-shadow:none;cursor:pointer}
+.sh-stage-action:hover{background:#e5ead9}
+.sh-stage-action .sh-icon{width:17px;height:17px}
+.sh-paneldock{flex:none;max-height:48%;overflow-y:auto;overscroll-behavior:contain;margin-top:12px;padding:12px 2px 0;border-top:1px solid #e0e5d7;scrollbar-width:thin}
+.sh-paneldock .sh-pane{gap:12px}
+.sh-paneldock .sh-pad{height:172px}
+.sh-dock{display:flex;justify-content:center;align-items:center;gap:8px;min-height:var(--sh-dock-h);padding:10px 0;z-index:12}
+.sh-dock-button{display:flex;align-items:center;justify-content:center;gap:9px;min-width:108px;min-height:44px;border-radius:14px;background:#e9ecdf;border:1px solid #d7dfce;color:#5a735f;font:600 12px/1.3 inherit;cursor:pointer;box-shadow:0 2px 0 #d3dcc9}
+.sh-dock-button:hover{background:#dfe7d6}
+.sh-dock-button[aria-pressed=true]{background:#678b78;color:#fffdf7;border-color:#678b78;box-shadow:0 2px 0 #4b705c}
+.sh-backdrop{display:none}
+.sh-drawer{min-width:0;min-height:0;display:flex;flex-direction:column;background:#fffdf7;border-left:1px solid #dce2d3;z-index:20;overflow:hidden}
+.sh-drawer-head{display:flex;align-items:center;gap:10px;padding:20px 20px 16px;flex:none;border-bottom:1px solid #e9ebdf}
+.sh-drawer-kicker{font-size:9px;letter-spacing:.15em;color:#91a18f;margin-bottom:5px}
+.sh-drawer-title{font-size:18px;font-weight:650;letter-spacing:.02em;line-height:1.4;flex:1}
+.sh-close{width:40px;min-height:40px;display:grid;place-items:center;border:0;border-radius:12px;background:#edf0e5;color:#69816f;cursor:pointer}
+.sh-drawer-body{padding:20px;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#c3d0bb transparent;scroll-padding-block:16px}
+.sh-pane{display:flex;flex-direction:column;gap:18px;min-width:0}
+.sh-pane>.card{border:0;border-radius:0;padding:0;background:transparent}
+.sh-panel-intro{font-size:12px;line-height:1.9;color:#7a887d}
+.sh-section-label{font-size:10px;letter-spacing:.1em;font-weight:700;color:#718773;margin-bottom:8px}
+.sh-shell .sh-connect-card>h2,.sh-shell .sh-timer-card>h2{display:none}
+.sh-shell .sh-connect-card>.sep{display:none}
+.sh-shell .sh-connect-card .kv{gap:14px}
+.sh-shell .sh-connect-card .kv>.row{gap:8px}
+.sh-shell .sh-connect-card .kv>.row>.url{flex:1;min-width:120px}
+.sh-shell .sh-connect-card .kv>.row>.dim{min-width:38px!important;font-size:10px;letter-spacing:.05em}
+.sh-shell #wan_area{gap:8px;min-width:0}
+.sh-shell #wan_url:empty{display:none}
+.sh-shell #tok_txt{font-size:10px}
+.sh-shell #qr{margin:0 auto;background:#fff;border:1px solid #e0e6d8;border-radius:18px;padding:12px;box-shadow:0 5px 20px #5364440b}
+.sh-shell #qr img{width:182px;height:182px}
+.sh-shell .sh-connect-card .kv>.row:has(#qr){flex-direction:column;align-items:center;gap:15px;margin:4px 0 6px!important}
+.sh-connect-art{height:104px;display:grid;place-items:center;background:#edf0e4;border:1px solid #e0e6d6;border-radius:18px;overflow:hidden}
+.sh-connect-art svg{width:188px;height:100px}
+.sh-connect-caption{text-align:center;color:#6c816e;font-size:11px;line-height:1.8;margin-top:-5px}
+.sh-permission-row{display:flex;flex-direction:column;align-items:stretch;gap:3px!important;padding:8px 14px;border:1px solid #dfe5d6;border-radius:14px;background:#f3f5eb}
+.sh-display-tools{display:flex;flex-direction:column;align-items:flex-start;gap:12px;margin:0!important}
+.sh-display-tools>.grow{display:none}
+.sh-display-tools #mode_btn{width:100%;text-align:left}
+.sh-tools-links{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.sh-tools-link{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;padding:14px 5px!important;font-size:11px!important}
+.sh-shell .sh-pane .composer{padding:0;margin:0;border:0;border-radius:0;background:none}
+.sh-shell .sh-pane .composer label{font-size:12px;color:#637b67;margin-bottom:12px}
+.sh-shell .sh-pane .composer textarea{resize:none;min-height:112px;max-height:160px;font-size:16px;line-height:1.8;background:#f3f5ec}
+.sh-shell .sh-pane .composer .row{align-items:center;gap:8px}
+.sh-shell .sh-pane .composer .row>.dim{font-size:10px;min-width:120px}
+.sh-shell .input-status{font-size:11px;line-height:1.6;min-height:18px}
+.sh-shell .input-status.error{color:#af5c4e}
+.sh-shell .kbdrow{margin-top:0;gap:8px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
+.sh-shell .kbdrow .btn{min-width:0;padding:9px 5px;font-size:12px;min-height:44px}
+.sh-shortcuts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.sh-shortcuts .sh-button{padding:9px 4px;font-size:11px}
+.sh-shell .shutdown-row{margin:0;padding:16px 0 0;border-top:1px solid #e0e5d7;align-items:stretch;text-align:center;gap:9px}
+.sh-shell .shutdown-row .btn{font-size:12px}
+.sh-shell .shutdown-row .dim{font-size:10px}
+.sh-shell .sh-timer-card>.row{gap:8px}
+.sh-shell .sh-timer-card>.row>.btn{flex:1;font-size:11px;padding:10px 8px}
+.sh-shell .sh-timer-card #btn_test{flex-basis:100%;background:transparent;box-shadow:none}
+.sh-shell .sh-timer-card .sub{margin-left:12px}
+.sh-shell .sh-timer-card .sub label{flex-wrap:wrap}
+.sh-shell .sh-timer-card>label.item{align-items:flex-start;padding:9px 0}
+.sh-shell .sh-timer-card>label.item input{flex:none;margin-top:3px}
+.sh-shell .sh-pane #status_card{padding:14px;border:1px solid #dce5d4;border-radius:14px;background:#eff4e7}
+.sh-shell .statusline{font-size:12px;line-height:1.8;overflow-wrap:anywhere}
+.sh-pad{height:208px;min-height:112px;border:1px solid #d7e0cd;border-radius:18px;touch-action:none;user-select:none;-webkit-user-select:none;background:radial-gradient(circle,#bacab1 1px,transparent 1px) center/18px 18px,#ecf1e3;position:relative;overflow:hidden;cursor:crosshair}
+.sh-pad::after{content:'';position:absolute;inset:10px;border:1px solid #f9fcf2;border-radius:12px;pointer-events:none}
+.sh-pad-center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:9px;pointer-events:none;color:#8ca083;font-size:10px;letter-spacing:.08em}
+.sh-pad-center .sh-icon{width:27px;height:27px;stroke-width:1.4}
+.sh-pad.sh-pad-active{background-color:#e4edda}
+.sh-pad.sh-pad-held{border-color:#df875d;background-color:#f4e9d8}
+.sh-pad-actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.sh-pad-actions .sh-button{font-size:11px;padding:10px 5px;min-height:46px}
+.sh-pad-actions .sh-button[aria-pressed=true]{background:#df875d;border-color:#d78056;color:#fffdf7;box-shadow:0 2px 0 #b56c47}
+.sh-pad-help{display:flex;justify-content:space-between;gap:8px;color:#7d8c7b;font-size:10px;line-height:1.7}
+.sh-shell #cd{background:#f5f1e8f5;color:#263b3b;backdrop-filter:blur(16px)}
+.sh-shell #cdnum{color:#c47954;text-shadow:none;font-weight:700}
+.sh-shell #cdreason{color:#758471}
+.sh-shell #auth{background:#e7ecdfef;backdrop-filter:blur(15px)}
+.sh-shell #auth .card{border-radius:24px;padding:28px;box-shadow:0 16px 70px #334c3420;gap:18px}
+.sh-shell #auth h2{font-size:16px;color:#355442;font-weight:650;letter-spacing:.03em}
+.sh-shell #auth .dim{font-size:12px;line-height:1.9}
+.sh-shell .err{color:#af5c4e;overflow-wrap:anywhere}
+.sh-shell footer{display:none}
+@media(min-width:1200px){.sh-stage{padding:20px 28px 0}.sh-stagebar{margin-bottom:16px}.sh-dock{min-height:78px}}
+@media(max-width:760px),(max-height:520px) and (pointer:coarse){
+  body.sh-shell{--sh-dock-h:76px}
+  .sh-shell .sh-header.card{height:50px;min-height:50px;padding:0 14px;gap:10px}
+  .sh-header-caption,.sh-shell #clock{display:none}
+  .sh-header h1{font-size:18px}
+  .sh-brandmark,.sh-brandmark svg{width:26px;height:26px}
+  .sh-shell .pill{font-size:10px}
+  .sh-workbench,.sh-workbench.sh-panel-open{grid-template-columns:minmax(0,1fr)}
+  .sh-rail{display:none}
+  .sh-stage{grid-column:1;padding:8px 10px 0;min-height:0}
+  .sh-stagebar{min-height:36px;margin-bottom:8px;gap:8px}
+  .sh-stage-label{font-size:10px;letter-spacing:.02em}
+  .sh-stagebar #fs_btn{min-height:36px;padding:8px 10px;font-size:11px}
+  .sh-stagebar #seg_mon{max-width:50%;padding:2px}
+  .sh-stagebar #seg_mon button{min-height:32px;padding:6px 9px;font-size:10px}
+  .sh-canvas{border-radius:14px}
+  .sh-dock{justify-content:stretch;gap:8px;padding:10px 3px calc(10px + env(safe-area-inset-bottom));min-height:calc(var(--sh-dock-h) + env(safe-area-inset-bottom));flex:none}
+  .sh-dock-button{flex:1;min-width:0;min-height:50px;border-radius:15px;gap:8px;font-size:12px}
+  .sh-dock-button .sh-icon{width:21px;height:21px}
+  .sh-drawer{position:absolute;left:12px;right:12px;bottom:calc(var(--sh-dock-h) + env(safe-area-inset-bottom) + 3px);max-height:min(54%,430px);border:1px solid #d8e1ce;border-radius:22px;box-shadow:0 14px 45px #2d453527;z-index:30}
+  .sh-drawer-head{padding:12px 16px 10px;gap:10px;border-bottom-color:#edf0e5}
+  .sh-drawer-kicker{display:none}
+  .sh-drawer-title{font-size:15px}
+  .sh-close{width:36px;min-height:36px;border-radius:11px}
+  .sh-drawer-body{padding:14px 16px 18px}
+  .sh-pane{gap:14px}
+  .sh-backdrop{position:absolute;inset:0 0 calc(var(--sh-dock-h) + env(safe-area-inset-bottom));border:0;background:#263b3b0d;z-index:21;cursor:default}
+  .sh-workbench.sh-panel-open .sh-backdrop{display:block}
+  .sh-connect-art{height:76px}
+  .sh-connect-art svg{height:76px;width:150px}
+  .sh-shell #qr img{width:162px;height:162px}
+  .sh-pad{height:154px;min-height:96px}
+  .sh-paneldock{padding-top:10px;max-height:42%}
+  .sh-paneldock .sh-pad{height:124px;min-height:88px}
+  .sh-paneldock .sh-pad-help{display:none}
+  .sh-pad-actions .sh-button{min-height:44px}
+  .sh-shell .sh-pane .composer textarea{min-height:76px;max-height:100px}
+  .sh-shell .sh-pane .composer .row>.dim{font-size:10px}
+  .sh-tools-links{gap:7px}
+  .sh-tools-link{padding:10px 4px!important}
+  .sh-stage-flags{left:7px;right:7px;bottom:7px}
+  .sh-stage-flags .dim{font-size:10px;padding:5px 8px}
+  .sh-strip{right:5px;width:12px;top:12%;bottom:24%}
+  .sh-quickkeys{right:6px;bottom:8px;gap:6px}
+  .sh-qkey{width:40px;height:40px;border-radius:12px;font-size:14px}
+  .sh-shell .composer .row .btn.sm{font-size:10px;min-height:38px;padding:7px 8px}
+}
+@media(max-height:520px) and (pointer:coarse){
+  .sh-strip{top:8%;bottom:34%}
+  .sh-quickkeys{flex-direction:row;right:96px;bottom:6px}
+  .sh-qkey{width:36px;height:36px;font-size:13px}
+  body.sh-shell{--sh-dock-h:58px}
+  .sh-shell .sh-header.card{height:44px;min-height:44px}
+  .sh-stage{padding-top:4px;flex-direction:row;flex-wrap:wrap;column-gap:8px}
+  .sh-stagebar{width:100%;min-height:32px;margin-bottom:4px}
+  .sh-stagebar #fs_btn{min-height:30px;padding:5px 9px}
+  .sh-canvas{height:calc(100% - 36px);flex:1}
+  .sh-dock{width:76px;min-height:0;flex-direction:column;justify-content:center;padding:0 0 4px;gap:6px}
+  .sh-dock-button{width:72px;flex:1;min-height:38px;flex-direction:row;gap:5px;font-size:10px;border-radius:12px}
+  .sh-dock-button .sh-icon{width:17px;height:17px}
+  .sh-drawer{left:auto;right:96px;bottom:10px;top:42px;width:min(360px,55%);max-height:none;border-radius:18px}
+  .sh-backdrop{inset:0 88px 0 0}
+  .sh-pad{height:102px}
+  .sh-paneldock{width:280px;margin:0;padding:0 0 4px;border-top:0;overflow-y:auto;scrollbar-width:thin}
+  .sh-paneldock .sh-pad{height:96px}
+  .sh-connect-art{display:none}
+  .sh-drawer-head{padding:9px 14px 7px}
+  .sh-drawer-body{padding:10px 14px 12px}
+  .sh-pane{gap:10px}
+  .sh-shell .sh-pane .composer textarea{min-height:66px;max-height:80px}
+}
+@media(prefers-reduced-motion:reduce){.sh-shell *{animation:none!important;transition:none!important;scroll-behavior:auto!important}}

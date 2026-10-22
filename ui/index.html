@@ -55,11 +55,14 @@
   label.item{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14.5px;padding:4px 0}
   input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent);cursor:pointer}
   input[type=radio]{accent-color:var(--accent)}
-  input[type=text],input[type=number]{
+  input[type=text],input[type=number],textarea{
     background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:10px;
-    color:var(--text);padding:8px 11px;font-size:14px;outline:none;width:100%;
+    color:var(--text);padding:10px 12px;font-size:16px;outline:none;width:100%;font-family:inherit;
   }
-  input[type=text]:focus,input[type=number]:focus{border-color:var(--accent)}
+  input[type=text]:focus,input[type=number]:focus,textarea:focus{border-color:var(--accent)}
+  textarea{resize:vertical;min-height:88px;line-height:1.6}
+  button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+  button:disabled{opacity:.45;cursor:default}
   input.w-short{width:90px}
   input.w-mid{width:140px}
   input:disabled{opacity:.45}
@@ -74,12 +77,12 @@
   .btn.primary{background:linear-gradient(135deg,#6366f1,#8b5cf6);border-color:transparent}
   .btn.primary:hover{filter:brightness(1.15)}
   .btn.danger{background:linear-gradient(135deg,#ef4444,#dc2626);border-color:transparent}
-  .btn.sm{padding:7px 12px;font-size:13px;border-radius:10px}
+  .btn.sm{padding:9px 14px;font-size:13px;border-radius:10px;min-height:44px}
   .sep{height:1px;background:var(--border);margin:10px 0}
   .kv{display:flex;flex-direction:column;gap:4px;font-size:14px}
   .url{font-family:Consolas,monospace;font-size:13px;word-break:break-all;color:#a5b4fc}
   .seg{display:inline-flex;background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:10px;overflow:hidden}
-  .seg button{background:none;border:none;color:var(--dim);padding:7px 14px;font-size:13px;cursor:pointer}
+  .seg button{background:none;border:none;color:var(--dim);padding:9px 14px;min-height:44px;font-size:13px;cursor:pointer}
   .seg button.on{background:var(--accent);color:#0b1120;font-weight:700}
   #qr{background:#fff;border-radius:14px;padding:8px;display:none}
   #qr img{display:block;width:200px;height:200px}
@@ -96,6 +99,15 @@
   .conn{width:9px;height:9px;border-radius:50%;display:inline-block;background:var(--green)}
   .conn.bad{background:var(--red)}
   .kbdrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .composer{margin-top:14px;padding:14px;background:rgba(0,0,0,.18);border:1px solid var(--border);border-radius:14px}
+  .composer label{display:block;font-size:14px;font-weight:600;margin-bottom:8px}
+  .input-status{font-size:13px;min-height:22px;margin-top:8px;color:var(--dim);overflow-wrap:anywhere}
+  .input-status.error{color:var(--red)}
+  .remote-help{line-height:1.7;margin:8px 0}
+  .shutdown-row{margin-top:18px;padding-top:14px;border-top:1px solid var(--border);display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+  .shutdown-row .btn{white-space:nowrap;min-height:48px}
+  @media(max-width:540px){body{padding:10px}.card{padding:14px}.sub{margin-left:12px}.kbdrow .btn{flex:1;min-width:54px}.composer .btn{min-width:86px}.wrap{gap:10px}}
+  @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
   /* カウントダウンオーバーレイ */
   #cd{position:fixed;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:18px;
     background:rgba(20,5,8,.55);backdrop-filter:blur(24px);z-index:50;text-align:center;padding:20px}
@@ -111,6 +123,7 @@
   .statusline{font-size:14px;padding:3px 0}
   footer{color:var(--dim);font-size:11.5px;text-align:center;padding:6px 0 18px}
 </style>
+<link rel="stylesheet" href="/shell.css">
 </head>
 <body>
 <div class="wrap">
@@ -161,7 +174,7 @@
       <div class="row"><span class="dim" style="min-width:52px">LAN</span><span class="url" id="lan_url"></span><button class="btn sm" id="copy_lan">コピー</button></div>
       <div class="row">
         <span class="dim" style="min-width:52px">WAN</span>
-        <span id="wan_area" class="row grow"><button class="btn sm" id="btn_tunnel">トンネル開始</button><span id="tun_status" class="dim"></span></span>
+        <span id="wan_area" class="row grow"><span id="wan_url" class="url"></span><button class="btn sm" id="btn_tunnel">トンネル開始</button><button class="btn sm" id="copy_wan" hidden>コピー</button><span id="tun_status" class="dim"></span></span>
       </div>
       <div class="row"><span class="dim" style="min-width:52px">トークン</span><code class="url" id="tok_txt"></code><button class="btn sm" id="copy_tok">コピー</button></div>
       <div class="row" style="margin-top:6px">
@@ -180,7 +193,8 @@
   </div>
 
   <div class="card">
-    <h2>画面 <span class="dim" style="text-transform:none;font-weight:400;font-size:12px">タップ=クリック / 長押し=右クリック / ダブルタップ=ダブルクリック / 2本指=ズーム・移動</span></h2>
+    <h2>リモート画面</h2>
+    <p class="dim remote-help">タップでクリック、ダブルタップでダブルクリック、長押しで右クリック。上にスワイプすると下へスクロールします（スマホと同じ向き）。右端のバーは上下に引くと確実にスクロール。右下のキーでEnter/Esc/Tab/⌫。2本指でズーム・移動できます。</p>
     <div class="row" style="margin-bottom:8px">
       <label class="item"><input type="checkbox" id="show_mirror" checked> ミラー</label>
       <button class="btn sm" id="mode_btn">操作: スクロール</button>
@@ -192,12 +206,31 @@
       <span class="grow"></span>
       <button class="btn sm" id="fs_btn">⛶ 全画面</button>
     </div>
-    <div id="screen"><div id="view"><img id="mjpeg" alt=""><div id="touch"></div></div><button class="btn sm" id="fs_float">⛶</button></div>
+    <div id="screen"><div id="view"><img id="mjpeg" alt=""><div id="touch" tabindex="0" role="application" aria-label="リモート画面。クリックしてキーボード操作"></div></div><button class="btn sm" id="fs_float">⛶</button></div>
     <div id="mir_off" class="dim" style="display:none;margin-top:6px">ミラー配信は設定で無効化されています</div>
     <div id="ctrl_off" class="dim" style="display:none;margin-top:6px">リモート操作は設定で無効化されています（視聴のみ）</div>
+    <div class="composer">
+      <label for="kbd">文字を送信</label>
+      <div class="seg kmode" role="group" aria-label="入力モード">
+        <button type="button" id="kmode_batch" class="on">まとめて</button><button type="button" id="kmode_live">直接入力</button>
+      </div>
+      <div id="kbatch">
+        <textarea id="kbd" rows="2" maxlength="4096" placeholder="PCの入力先をタップしてから、ここに入力" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="send"></textarea>
+        <div class="row" style="margin-top:8px"><span class="dim grow">変換を確定して送信。Shift + Enterで改行</span><button class="btn primary" id="kbd_send">送信</button></div>
+      </div>
+      <form id="klive" style="display:none" autocomplete="off">
+        <input type="text" id="live_kbd" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go" placeholder="ここで打つと、PCにそのまま入ります">
+        <div class="dim" style="margin-top:6px">文字・Backspace・Enterをそのまま転送。日本語は変換確定で送信</div>
+      </form>
+      <div class="row" style="margin-top:10px">
+        <button class="btn sm" id="clip_get" type="button">PCのコピー ↓</button>
+        <button class="btn sm" id="clip_set" type="button">PCへコピー ↑</button>
+        <button class="btn sm" id="file_pick" type="button">ファイルを送る</button>
+        <input type="file" id="file_in" style="display:none" aria-hidden="true" tabindex="-1">
+      </div>
+      <div id="input_status" class="input-status" role="status" aria-live="polite"></div>
+    </div>
     <div class="kbdrow">
-      <input type="text" id="kbd" class="grow" placeholder="キーボード入力 → 送信でタイプ">
-      <button class="btn sm" id="kbd_send">送信</button>
       <button class="btn sm" data-k="Enter">Enter</button>
       <button class="btn sm" data-k="Backspace">Bksp</button>
       <button class="btn sm" data-k="Tab">Tab</button>
@@ -213,9 +246,8 @@
       <button class="btn sm" data-k="Down">↓</button>
       <button class="btn sm" data-k="Left">←</button>
       <button class="btn sm" data-k="Right">→</button>
-      <span class="grow"></span>
-      <button class="btn danger sm" id="btn_sd">今すぐシャットダウン</button>
     </div>
+    <div class="shutdown-row"><button class="btn danger" id="btn_sd">シャットダウン…</button><span class="dim">確認後、設定した猶予時間のカウントダウンを開始</span></div>
   </div>
 
   <footer>Shut — token で保護されています。URLを共有しないでください。</footer>
@@ -223,7 +255,7 @@
 
 <div id="cd">
   <div id="cdnum">60</div>
-  <div style="font-size:18px">秒後にシャットダウン</div>
+  <div id="cdlabel" style="font-size:18px">秒後にシャットダウン</div>
   <div id="cdreason"></div>
   <div class="row" style="justify-content:center">
     <button class="btn danger" id="cd_cancel" style="font-size:18px;padding:14px 34px">キャンセル</button>
@@ -243,17 +275,27 @@
 
 <script>
 const qs = new URLSearchParams(location.search);
-const TOKEN = qs.get('t') || localStorage.getItem('shut_t') || '';
-if (TOKEN) localStorage.setItem('shut_t', TOKEN);
+// Androidはephemeral=1で開き、WebViewに認証情報を永続保存しない。
+const ephemeral=qs.get('ephemeral')==='1';
+function storedToken(){try{return ephemeral?'':localStorage.getItem('shut_t')||'';}catch{return '';}}
+function rememberToken(token){if(!ephemeral){try{localStorage.setItem('shut_t',token);}catch{}}}
+const TOKEN = qs.get('t') || storedToken();
+if (TOKEN) rememberToken(TOKEN);
 
 function showAuth(){ $('auth').classList.add('show'); }
 async function api(path, body){
   const opt = {headers:{'x-shut-token':TOKEN}};
   if (body){ opt.method='POST'; opt.headers['Content-Type']='application/json'; opt.body=JSON.stringify(body); }
   else opt.method='POST';
-  const r = await fetch(path, opt);
+  const controller=path==='/input'?new AbortController():null;
+  if(controller)opt.signal=controller.signal;
+  const timeout=controller?setTimeout(()=>controller.abort(),8000):null;
+  let r;
+  try{r=await fetch(path,opt);}finally{if(timeout)clearTimeout(timeout);}
   if (r.status===401){ showAuth(); throw new Error('401'); }
-  return r.json().catch(()=>({}));
+  const data = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(data.error || `通信エラー (${r.status})`);
+  return data;
 }
 const apiGet = async p => {
   const r = await fetch(p,{headers:{'x-shut-token':TOKEN}});
@@ -269,7 +311,7 @@ let settings = null, armed = false;
 
 function bind(id, key, isNum){
   $(id).addEventListener('input', e=>{
-    if(!settings || e.target.type==='checkbox') return;
+    if(!settings || e.target.type==='checkbox' || e.isComposing) return;
     settings[key] = isNum ? +e.target.value : e.target.value;
     saveSoon();
   });
@@ -280,8 +322,21 @@ function bind(id, key, isNum){
     saveSoon();
   });
 }
-let saveT=null;
-function saveSoon(){ clearTimeout(saveT); saveT=setTimeout(()=>api('/api/settings',settings),400); }
+let saveT=null, settingsRevision=0, savedSettingsRevision=0, settingsSave=Promise.resolve();
+async function flushSettings(){
+  clearTimeout(saveT);saveT=null;
+  if(settingsRevision===savedSettingsRevision)return settingsSave;
+  const revision=settingsRevision, snapshot={...settings};
+  settingsSave=settingsSave.catch(()=>{}).then(()=>api('/api/settings',snapshot)).then(()=>{
+    savedSettingsRevision=Math.max(savedSettingsRevision,revision);
+    $('arm_err').textContent='';
+  });
+  return settingsSave;
+}
+function saveSoon(){
+  settingsRevision++;clearTimeout(saveT);
+  saveT=setTimeout(()=>flushSettings().catch(e=>{$('arm_err').textContent=`設定を保存できませんでした: ${e.message}`;}),400);
+}
 
 function applySettings(s){
   settings = s;
@@ -300,7 +355,7 @@ function applySettings(s){
   $('s_force').checked = s.force_close;
   $('s_mirror').checked = s.mirror_enabled;
   $('s_ctrl').checked = s.control_enabled;
-  document.querySelectorAll('input').forEach(i=>{ if(!['kbd','show_mirror','auth_in'].includes(i.id)) i.disabled = armed; });
+  document.querySelectorAll('input').forEach(i=>{ if(!['kbd','live_kbd','file_in','show_mirror','auth_in'].includes(i.id)) i.disabled = armed; });
 }
 ['s_timer','s_at','s_after','s_fw','s_dirs','s_idle','s_ext','s_cd','s_force','s_mirror','s_ctrl']
   .forEach(id=>bind(id, {s_timer:'timer_enabled',s_at:'at_time',s_after:'after_minutes',s_fw:'filewatch_enabled',s_dirs:'watch_dirs',s_idle:'file_idle_minutes',s_ext:'trigger_file_enabled',s_cd:'countdown_secs',s_force:'force_close',s_mirror:'mirror_enabled',s_ctrl:'control_enabled'}[id],
@@ -316,7 +371,7 @@ $('auth_go').onclick = ()=>{
   const m = v.match(/[?&]t=([^&\s]+)/);
   if (m) v = m[1];
   if (!v) return;
-  localStorage.setItem('shut_t', v);
+  rememberToken(v);
   const u = new URL(location.href);
   u.searchParams.set('t', v);
   location.href = u.toString();
@@ -331,16 +386,30 @@ function copyText(txt, btn){
 
 // ---------- ボタン ----------
 $('btn_arm').onclick = async ()=>{
-  saveSoon(); await new Promise(r=>setTimeout(r,450));
-  const r = await api('/api/arm');
-  $('arm_err').textContent = r.error||'';
+  try{await flushSettings();await api('/api/arm');$('arm_err').textContent='';}
+  catch(e){$('arm_err').textContent=e.message;}
 };
 $('btn_disarm').onclick = ()=>api('/api/disarm');
-$('btn_test').onclick = ()=>api('/api/shutdown');
+let previewDeadline=0;
+function renderCountdown(){
+  const actual=curState?.phase==='countdown';
+  if(actual)previewDeadline=0;
+  const preview=previewDeadline>Date.now();
+  $('cd').classList.toggle('show',actual||preview);
+  $('cdnum').textContent=actual?curState.countdown_left:Math.ceil((previewDeadline-Date.now())/1000);
+  $('cdlabel').textContent=actual?'秒後にシャットダウン':'秒・表示テスト';
+  $('cdreason').textContent=actual?curState.reason:'表示だけのテストです。PCのシャットダウンは実行しません。';
+  $('cd_now').hidden=!actual;
+}
+$('btn_test').onclick=()=>{previewDeadline=Date.now()+(settings?.countdown_secs||60)*1000;renderCountdown();};
+setInterval(renderCountdown,250);
 $('btn_sd').onclick = async ()=>{
   if(confirm('本当にシャットダウンしますか？')) await api('/api/shutdown');
 };
-$('cd_cancel').onclick = ()=>api('/api/cancel');
+$('cd_cancel').onclick = ()=>{
+  if(curState?.phase==='countdown')return api('/api/cancel');
+  previewDeadline=0;renderCountdown();
+};
 $('cd_now').onclick = ()=>api('/api/shutdown',{now:true});
 
 // ---------- トンネル ----------
@@ -369,11 +438,74 @@ $('mode_btn').onclick=e=>{
 const QP={low:{w:640,q:40},mid:{w:960,q:55},high:{w:1600,q:72}};
 let qual='mid';
 let curMon=0;
-const inp=o=>api('/input',{m:curMon,...o});  // 入力は表示中モニタの座標系で送る
+// 入力順序を維持。自動再送は重複入力を生むため行わない。
+let inputTail=Promise.resolve(), inputPending=0, pendingMotion=null, focusResult=Promise.resolve(true);
+let pendingTap=null, tapTimer=null;
+function flushPendingTap(){
+  if(!pendingTap)return;
+  clearTimeout(tapTimer);const tap=pendingTap;pendingTap=null;
+  return inp({type:'click',x:tap.x,y:tap.y,m:tap.m});
+}
+function sendTap(p,e){
+  const now=Date.now();
+  if(pendingTap && now-pendingTap.time<350 && pendingTap.m===curMon && Math.hypot(e.clientX-pendingTap.cx,e.clientY-pendingTap.cy)<24){
+    clearTimeout(tapTimer);pendingTap=null;
+    inp({type:'double_click',...p});
+  }else{
+    flushPendingTap();
+    pendingTap={...p,m:curMon,cx:e.clientX,cy:e.clientY,time:now};
+    tapTimer=setTimeout(flushPendingTap,350);
+  }
+}
+function inputStatus(message, error=false){
+  $('input_status').textContent=message;
+  $('input_status').classList.toggle('error',error);
+}
+function inp(o){
+  // 入力先のタップを確定してから、後続の文字やキーを送る。
+  if(pendingTap)flushPendingTap();
+  const changesFocus=['click','double_click','down'].includes(o.type);
+  const reject=message=>{inputStatus(message,true);const result=Promise.resolve(false);if(changesFocus)focusResult=result;return result;};
+  if(curState && !curState.settings.control_enabled)return reject('PC側でリモート操作が無効になっています。');
+  // マウスを離す操作は、混雑時にも失わない。
+  if(inputPending>=64 && o.type!=='up')return reject('操作が混み合っています。画面の反映を待ってください。');
+  const event={m:curMon,...o};
+  const requiredFocus=['text','key'].includes(event.type)?focusResult:null;
+  const motion=event.type==='move'||event.type==='scroll';
+  if(motion&&pendingMotion?.event.type===event.type&&pendingMotion.event.m===event.m){
+    pendingMotion.event.x=event.x;pendingMotion.event.y=event.y;
+    if(event.type==='scroll')pendingMotion.event.dy+=event.dy;
+    return pendingMotion.task;
+  }
+  pendingMotion=null;
+  inputPending++;
+  const task=inputTail.then(async()=>{
+    if(requiredFocus && !await requiredFocus){
+      inputStatus('入力先を選択できませんでした。PCの入力先をタップし直してください。',true);
+      return false;
+    }
+    if(pendingMotion?.event===event)pendingMotion=null;
+    await api('/input',event);return true;
+  }).catch(e=>{
+    inputStatus(e.message==='401'?'認証が切れました。接続し直してください。':`送信できませんでした: ${e.message}`,true);
+    return false;
+  }).finally(()=>{inputPending--;});
+  inputTail=task;
+  if(changesFocus)focusResult=task;
+  if(motion)pendingMotion={event,task};
+  return task;
+}
 const setStream=()=>{
   if(!$('show_mirror').checked||!TOKEN){ $('mjpeg').removeAttribute('src'); return; }
   const p=QP[qual];
   $('mjpeg').src=`/stream.mjpeg?m=${curMon}&w=${p.w}&q=${p.q}&t=${TOKEN}`;
+};
+// キャッシュ回避つきの強制再接続（手動ボタン・復帰時・切断リトライ共通）
+const reloadStream=()=>{
+  if(!$('show_mirror').checked||!TOKEN)return;
+  if(curState&&curState.settings&&curState.settings.mirror_enabled===false)return;
+  const s=$('mjpeg'), p=QP[qual];
+  s.src=`/stream.mjpeg?m=${curMon}&w=${p.w}&q=${p.q}&t=${TOKEN}&r=${Date.now()}`;
 };
 $('show_mirror').addEventListener('change',setStream);
 ['low','mid','high'].forEach(k=>{
@@ -387,13 +519,10 @@ $('show_mirror').addEventListener('change',setStream);
 let retryT=null;
 $('mjpeg').addEventListener('error',()=>{
   clearTimeout(retryT);
-  retryT=setTimeout(()=>{
-    if(!$('show_mirror').checked||!TOKEN)return;
-    if(curState&&curState.settings&&!curState.settings.mirror_enabled)return;
-    const s=$('mjpeg'), p=QP[qual];
-    s.src=`/stream.mjpeg?m=${curMon}&w=${p.w}&q=${p.q}&t=${TOKEN}&r=${Date.now()}`;
-  },1500);
+  retryT=setTimeout(reloadStream,1500);
 });
+// アプリがバックグラウンドから戻った時、止まった配信を張り直す
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')reloadStream();});
 setStream();
 
 // フルスクリーン（画面内フロートボタンでも解除可）
@@ -427,17 +556,20 @@ const touch=$('touch');
 let pdown=null, pressTimer=null, lastMove=0;
 const npos = e => {const r=touch.getBoundingClientRect();return {x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height};};
 touch.addEventListener('pointerdown',e=>{
+  if(e.pointerType==='mouse'&&e.button!==0&&e.button!==2)return;
+  if(e.pointerType==='mouse')touch.focus({preventScroll:true});
   touch.setPointerCapture(e.pointerId);
   ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
   if(ptrs.size===2){
+    if(pdown?.sentDown) inp({type:'up',x:pdown.x,y:pdown.y});
     clearTimeout(pressTimer); pdown=null;
     const [a,b]=[...ptrs.values()];
     pinch={d0:Math.hypot(a.x-b.x,a.y-b.y)||1,mx:(a.x+b.x)/2,my:(a.y+b.y)/2,s0:zoom.s,x0:zoom.x,y0:zoom.y};
     return;
   }
   if(ptrs.size>2) return;
-  const p=npos(e); pdown={...p,t:Date.now(),moved:false,sentDown:false};
-  pressTimer=setTimeout(()=>{ if(pdown&&!pdown.moved){inp({type:'click',x:p.x,y:p.y,button:'right'}); pdown=null;} },560);
+  const p=npos(e); pdown={...p,startX:e.clientX,startY:e.clientY,lastY:e.clientY,t:Date.now(),moved:false,sentDown:false,desktop:e.pointerType==='mouse',button:e.button===2?'right':''};
+  if(e.pointerType!=='mouse')pressTimer=setTimeout(()=>{ if(pdown&&!pdown.moved){inp({type:'click',x:p.x,y:p.y,button:'right'}); pdown=null;} },560);
 });
 touch.addEventListener('pointermove',e=>{
   if(!ptrs.has(e.pointerId))return;
@@ -454,41 +586,197 @@ touch.addEventListener('pointermove',e=>{
   }
   if(!pdown) return;
   const p=npos(e);
-  const dx=p.x-pdown.x, dy=p.y-pdown.y;
-  if(Math.hypot(dx*r_w(),dy*r_h())>12){ pdown.moved=true; clearTimeout(pressTimer); }
+  if(Math.hypot(e.clientX-pdown.startX,e.clientY-pdown.startY)>(pdown.desktop?3:12)){ pdown.moved=true; clearTimeout(pressTimer); }
   if(!pdown.moved) return;
   const now=Date.now(); if(now-lastMove<50) return; lastMove=now;
-  if(dragMode){
-    if(!pdown.sentDown){ inp({type:'down',x:p.x,y:p.y}); pdown.sentDown=true; }
-    else inp({type:'move',x:p.x,y:p.y});
+  if(dragMode||pdown.desktop){
+    if(!pdown.sentDown){ inp({type:'down',x:pdown.x,y:pdown.y,button:pdown.button}); pdown.sentDown=true; }
+    inp({type:'move',x:p.x,y:p.y});
+    pdown.x=p.x; pdown.y=p.y;
   }else{
-    inp({type:'scroll',x:p.x,y:p.y,dy:(p.y-pdown.y)*24}); pdown.y=p.y;
+    inp({type:'scroll',x:p.x,y:p.y,dy:(pdown.lastY-e.clientY)/32});
+    pdown.lastY=e.clientY;
   }
 });
-let lastTap=0;
 const endPtr=e=>{
   ptrs.delete(e.pointerId);
   if(ptrs.size<2) pinch=null;
   clearTimeout(pressTimer);
   if(!pdown) return;
   const p=npos(e);
-  const isTap = !pdown.moved && !pdown.sentDown && Date.now()-pdown.t<500;
-  if(dragMode && pdown.sentDown){ inp({type:'up',x:p.x,y:p.y}); }
+  const isTap = !pdown.moved && !pdown.sentDown && (pdown.desktop||Date.now()-pdown.t<500);
+  if(pdown.sentDown){ inp({type:'up',x:p.x,y:p.y,button:pdown.button}); }
   else if(isTap){
-    inp({type:'click',x:p.x,y:p.y});
-    const n=Date.now();
-    if(n-lastTap<350) inp({type:'click',x:p.x,y:p.y});
-    lastTap=n;
+    if(pdown.button==='right')inp({type:'click',...p,button:'right'});
+    else sendTap(p,e);
   }
   pdown=null;
 };
 touch.addEventListener('pointerup',endPtr);
-touch.addEventListener('pointercancel',e=>{ptrs.delete(e.pointerId);if(ptrs.size<2)pinch=null;clearTimeout(pressTimer);pdown=null;});
-const r_w=()=>touch.clientWidth, r_h=()=>touch.clientHeight;
+function cancelPtr(e){
+  ptrs.delete(e.pointerId);if(ptrs.size<2)pinch=null;clearTimeout(pressTimer);
+  if(pdown?.sentDown) inp({type:'up',x:pdown.x,y:pdown.y,button:pdown.button});
+  pdown=null;
+}
+touch.addEventListener('pointercancel',cancelPtr);
+touch.addEventListener('lostpointercapture',e=>{if(ptrs.has(e.pointerId))cancelPtr(e);});
+touch.addEventListener('contextmenu',e=>e.preventDefault());
+function forwardKey(e){
+  const names={ArrowUp:'Up',ArrowDown:'Down',ArrowLeft:'Left',ArrowRight:'Right',' ':'Space'};
+  const name=names[e.key]||e.key;
+  const special=/^(Enter|Backspace|Escape|Tab|Delete|Home|End|Up|Down|Left|Right|Space|PageUp|PageDown|F([1-9]|1[0-2]))$/.test(name);
+  if((e.ctrlKey||e.altKey)&&(/^[a-z0-9]$/i.test(name)||special)){
+    e.preventDefault();inp({type:'key',key:name,modifiers:[e.ctrlKey&&'Control',e.altKey&&'Alt',e.shiftKey&&'Shift'].filter(Boolean)});
+  }else if(special){e.preventDefault();inp({type:'key',key:name,modifiers:e.shiftKey?['Shift']:[]});}
+  else if(e.key.length===1){e.preventDefault();inp({type:'text',text:e.key});}
+}
+touch.addEventListener('keydown',e=>{
+  if(e.isComposing||e.keyCode===229)return;
+  forwardKey(e);
+});
+// 何もフォーカスしていないときもPCへキーを転送する（AnyDesk的な打鍵体験）。
+// 編集フィールド上・パネル表示中・オーバーレイ表示中はローカル側を優先する。
+document.addEventListener('keydown',e=>{
+  if(e.isComposing||e.keyCode===229||e.defaultPrevented||e.target===touch)return;
+  const t=e.target;
+  if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'||t.isContentEditable))return;
+  if(window.shutShell&&shutShell.panel&&shutShell.panel())return;
+  if($('auth').classList.contains('show')||$('cd').classList.contains('show'))return;
+  const interactive=t&&(t.tagName==='BUTTON'||t.tagName==='A'||(t.getAttribute&&t.getAttribute('role')==='button'));
+  if(interactive&&(e.key===' '||e.key==='Enter'))return;
+  forwardKey(e);
+});
+touch.addEventListener('wheel',e=>{
+  e.preventDefault();const p=npos(e);
+  const pixels=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?touch.clientHeight:1);
+  inp({type:'scroll',...p,dy:pixels/120});
+},{passive:false});
 
 document.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>inp({type:'key',key:b.dataset.k}));
-$('kbd_send').onclick=()=>{const t=$('kbd').value; if(t) inp({type:'text',text:t}); $('kbd').value='';};
-$('kbd').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('kbd_send').click();}});
+let composing=false, sendingText=false, lastShift=false;
+$('kbd').addEventListener('compositionstart',()=>{composing=true;});
+$('kbd').addEventListener('compositionend',()=>{composing=false;});
+$('kbd').addEventListener('compositioncancel',()=>{composing=false;});
+$('kbd').addEventListener('blur',()=>{composing=false;});
+$('kbd_send').onclick=async()=>{
+  if(sendingText)return;
+  if(composing){inputStatus('日本語の変換を確定してから送信してください。');return;}
+  const field=$('kbd'), text=field.value;
+  if(!text)return;
+  sendingText=true;$('kbd_send').disabled=true;
+  inputStatus('送信中…');
+  const ok=await inp({type:'text',text});
+  if(ok){
+    if(field.value===text)field.value='';
+    inputStatus('PCへ送信しました。');
+  }
+  sendingText=false;
+  $('kbd_send').disabled=curState?!curState.settings.control_enabled:false;
+};
+$('kbd').addEventListener('keydown',e=>{
+  lastShift=e.shiftKey;
+  if(e.isComposing||composing||e.keyCode===229)return;
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('kbd_send').click();}
+});
+// Androidのソフトキーボードは確定/送信キーがkeyCode 229になりkeydownでは拾えない。
+// beforeinputの改行要求を送信として扱う（Shift併用は改行のまま）。
+$('kbd').addEventListener('beforeinput',e=>{
+  if(e.inputType!=='insertParagraph'&&e.inputType!=='insertLineBreak')return;
+  if(lastShift)return;
+  e.preventDefault();
+  $('kbd_send').click();
+});
+
+// 直接入力モード: 入力差分をそのままPCへ転送する（リモートのキーボードとして打鍵）。
+const LIVE_SENT='  ';
+let livePrev=LIVE_SENT, liveComp=false, liveDrop=false, liveResetTimer=0, compEndTimer=0;
+const liveEl=()=> $('live_kbd');
+function liveReset(){const el=liveEl();livePrev=LIVE_SENT;el.value=LIVE_SENT;try{el.setSelectionRange(LIVE_SENT.length,LIVE_SENT.length);}catch{}}
+// IMEは確定直後にフィールドへテキストを書き戻すことがある。同期リセットすると
+// 書き戻しが新しい差分としてPCへ再送されるため、一連の入力処理が落ち着いてから
+// リセットする（タイマー中の追加入力は次のsyncが差分として拾う）。
+function queueLiveReset(){
+  clearTimeout(liveResetTimer);
+  liveResetTimer=setTimeout(()=>{
+    const el=liveEl();
+    if(el.value!==livePrev)return;
+    el.value=LIVE_SENT;livePrev=LIVE_SENT;
+    try{el.setSelectionRange(LIVE_SENT.length,LIVE_SENT.length);}catch{}
+  },60);
+}
+function liveSync(){
+  const el=liveEl(),v=el.value;
+  if(liveDrop){livePrev=v;return;}
+  if(v===livePrev)return;
+  let i=0;while(i<v.length&&i<livePrev.length&&v[i]===livePrev[i])i++;
+  let j=0;while(i+j<v.length&&i+j<livePrev.length&&v[v.length-1-j]===livePrev[livePrev.length-1-j])j++;
+  const removed=livePrev.length-i-j,added=v.slice(i,v.length-j);
+  livePrev=v;
+  for(let k=0;k<removed;k++)inp({type:'key',key:'Backspace'});
+  if(added)inp({type:'text',text:added});
+  queueLiveReset();
+}
+// 確定していない合成文字・フォーカス外れ中の書き戻しはPC側に存在しないので送らない。
+function liveDiscard(){
+  liveComp=false;liveDrop=true;liveReset();
+  setTimeout(()=>{liveDrop=false;},300);
+}
+$('live_kbd').addEventListener('compositionstart',()=>{liveComp=true;clearTimeout(compEndTimer);});
+// compositionend直後にさらなる合成・確定が続くことがある（確定差し替えで
+// 中間の読みが確定扱いになるのを防ぐため、直後のイベントが落ち着いてから同期する）。
+// 確定テキストは通常その直後のinputイベントでも拾われるので、こちらは保険。
+$('live_kbd').addEventListener('compositionend',()=>{
+  liveComp=false;
+  clearTimeout(compEndTimer);
+  compEndTimer=setTimeout(()=>{if(!liveComp)liveSync();},40);
+});
+$('live_kbd').addEventListener('compositioncancel',liveDiscard);
+$('live_kbd').addEventListener('blur',liveDiscard);
+$('live_kbd').addEventListener('input',e=>{if(!liveComp&&!e.isComposing)liveSync();});
+$('live_kbd').addEventListener('focus',()=>{liveDrop=false;liveReset();});
+// Enterは値差分に現れないため、keydownと暗黙フォーム送信（Androidのgo/enterキー対策）で拾う。
+$('live_kbd').addEventListener('keydown',e=>{
+  if(!e.isComposing&&!liveComp&&e.key==='Enter'&&e.keyCode!==229){e.preventDefault();inp({type:'key',key:'Enter'});}
+});
+$('klive').addEventListener('submit',e=>{e.preventDefault();inp({type:'key',key:'Enter'});});
+function setKmode(live){
+  $('kmode_batch').classList.toggle('on',!live);
+  $('kmode_live').classList.toggle('on',live);
+  $('kbatch').style.display=live?'none':'';
+  $('klive').style.display=live?'':'none';
+  if(live){liveReset();liveEl().focus();}
+}
+$('kmode_batch').onclick=()=>setKmode(false);
+$('kmode_live').onclick=()=>setKmode(true);
+
+// クリップボード共有・ファイル送信
+$('clip_get').onclick=async()=>{
+  try{
+    const d=await apiGet('/api/clipboard');
+    if(d.text){const el=$('kbd');setKmode(false);el.value=d.text;el.focus();inputStatus('PCのコピーを読み込みました。');}
+    else inputStatus('PCのコピーは空です。');
+  }catch(e){inputStatus(`コピーを読めませんでした: ${e.message}`,true);}
+};
+$('clip_set').onclick=async()=>{
+  const text=$('kbd').value;
+  if(!text){inputStatus('送る文字がありません。',true);return;}
+  try{await api('/api/clipboard',{text});inputStatus('PCのコピーへ入れました。PC側で Ctrl+V して使えます。');}
+  catch(e){inputStatus(`コピーを送れませんでした: ${e.message}`,true);}
+};
+$('file_pick').onclick=()=>$('file_in').click();
+$('file_in').addEventListener('change',async()=>{
+  const f=$('file_in').files&&$('file_in').files[0];
+  $('file_in').value='';
+  if(!f)return;
+  if(f.size>256*1024*1024){inputStatus('256MBまでのファイルにしてください。',true);return;}
+  inputStatus(`「${f.name}」をPCへ送っています…`);
+  try{
+    const r=await fetch('/api/upload?name='+encodeURIComponent(f.name),{method:'POST',headers:{'x-shut-token':TOKEN,'Content-Type':'application/octet-stream'},body:f});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(d.error||`通信エラー (${r.status})`);
+    inputStatus(`PCに保存しました: ${d.path}`);
+  }catch(e){inputStatus(`ファイルを送れませんでした: ${e.message}`,true);}
+});
 
 // ---------- ポーリング ----------
 let fails=0;
@@ -509,7 +797,7 @@ async function poll(){
     $('btn_arm').style.display = st.phase==='config'?'':'none';
     $('btn_disarm').style.display = (armed||st.phase==='done')?'':'none';
     $('btn_disarm').textContent = armed?'監視を中止':'戻る';
-    document.querySelectorAll('input').forEach(i=>{if(!['kbd','show_mirror','auth_in'].includes(i.id))i.disabled=inArm});
+    document.querySelectorAll('input').forEach(i=>{if(!['kbd','live_kbd','file_in','show_mirror','auth_in'].includes(i.id))i.disabled=inArm});
 
     // ステータスカード
     if(armed||st.phase==='done'){
@@ -530,6 +818,9 @@ async function poll(){
 
     // ミラー/操作の無効化表示
     $('ctrl_off').style.display = st.settings.control_enabled?'none':'';
+    $('kbd_send').disabled=sendingText||!st.settings.control_enabled;
+    ['live_kbd','clip_get','clip_set','file_pick','kmode_live','kmode_batch'].forEach(id=>{$(id).disabled=!st.settings.control_enabled;});
+    document.querySelectorAll('[data-k]').forEach(b=>b.disabled=!st.settings.control_enabled);
     $('mir_off').style.display = st.settings.mirror_enabled?'none':'';
     $('touch').style.pointerEvents = st.settings.control_enabled?'auto':'none';
     if(!st.settings.mirror_enabled) $('mjpeg').removeAttribute('src');
@@ -552,11 +843,7 @@ async function poll(){
     }else $('seg_mon').style.display='none';
 
     // カウントダウン
-    if(st.phase==='countdown'){
-      $('cd').classList.add('show');
-      $('cdnum').textContent=st.countdown_left;
-      $('cdreason').textContent=st.reason;
-    } else $('cd').classList.remove('show');
+    renderCountdown();
 
     // リモート
     $('lan_url').textContent = authed(st.lan_url);
@@ -567,20 +854,19 @@ async function poll(){
     $('tun_status').textContent =
       tn.status==='starting'?'起動中…（初回はcloudflaredをDL）':
       tn.status==='failed'?(tn.error||'失敗'):'';
-    if(tn.status==='running'){
-      $('wan_area').innerHTML=`<span class="url">${authed(tn.url)}</span><button class="btn sm" id="btn_tunnel">停止</button><button class="btn sm" id="copy_wan">コピー</button>`;
-      $('copy_wan').onclick = e=>copyText(authed(tn.url), e.target);
-    }else{
-      $('wan_area').innerHTML=`<button class="btn sm" id="btn_tunnel">トンネル開始</button><span id="tun_status" class="dim">${$('tun_status')?.textContent||''}</span>`;
-    }
+    $('wan_url').textContent=tn.status==='running'?authed(tn.url):'';
+    $('btn_tunnel').textContent=tn.status==='running'?'停止':tn.status==='starting'?'起動を中止':'トンネル開始';
+    $('copy_wan').hidden=tn.status!=='running';
+    $('copy_wan').onclick=e=>{if(tn.url)copyText(authed(tn.url),e.target);};
     $('btn_tunnel').onclick=()=>api('/api/tunnel');
     $('clients').textContent=st.mirror_clients;
     updQR();
 
     // 設定フィールドの同期（編集中以外）
-    if(JSON.stringify(st.settings)!==JSON.stringify(settings) && document.activeElement?.type!=='text'&&document.activeElement?.type!=='number'){
+    if(settingsRevision===savedSettingsRevision && JSON.stringify(st.settings)!==JSON.stringify(settings) && document.activeElement?.type!=='text'&&document.activeElement?.type!=='number'){
       applySettings(st.settings);
     }
+    window.dispatchEvent(new CustomEvent('shut:state',{detail:st}));
   }catch(e){
     if(e.message!=='401'){
       fails++;
@@ -589,7 +875,9 @@ async function poll(){
   }
   setTimeout(poll,1000);
 }
+window.shutControls={input:inp,state:()=>curState,monitor:()=>curMon,setMonitor:m=>{curMon=m;setStream();},setStream,reload:reloadStream,flushTap:flushPendingTap};
 poll();
 </script>
+<script src="/shell.js"></script>
 </body>
 </html>
