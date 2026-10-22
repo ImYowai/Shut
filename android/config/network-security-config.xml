@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  dx が生成する既定の network_security_config.xml は 127.0.0.1 のみ
+  cleartext を許可し、LAN（192.168.x.x 等）やエミュレータの 10.0.2.2 への
+  HTTP 接続を WebView が拒否してしまうため、ビルド時にこの内容で置き換える。
+  cleartext は LAN での画面ミラー接続に必要。実際の接続先制限は
+  Rust 側の URL 検証（HTTP は private/loopback のみ）と
+  RemoteActivity の origin ロックが担う。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
