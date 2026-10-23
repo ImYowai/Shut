@@ -1,6 +1,6 @@
 [package]
 name = "shut-android"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["yamau"]
 edition = "2024"
 

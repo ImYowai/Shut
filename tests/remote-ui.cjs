@@ -66,6 +66,7 @@ test('Japanese IME commit does not send; confirmed text and emoji send once',()=
     el.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',keyCode:229,bubbles:true}));
   });
   await drain();assert.equal(events.length,0);
+  await page.waitForTimeout(250); // 確定直後のEnterガード期間を越えてから送信する
   await page.locator('#kbd').press('Enter');await drain();
   assert.equal(events.length,1);assert.equal(events[0].text,'日本語😀');
   assert.equal(await page.locator('#kbd').inputValue(),'');
@@ -280,6 +281,97 @@ test('live mode discards uncommitted composition on cancel and blur',()=>fixture
   await live.evaluate(el=>el.dispatchEvent(new InputEvent('input',{data:'てすと',bubbles:true})));
   await drain();
   assert.equal(events.length,0,'blur中の未確定文字は送らない');
+}));
+
+test('live mode treats Enter right after an IME commit as part of the commit',()=>fixture(async({page,events,drain})=>{
+  await page.locator('#kmode_live').click();
+  const live=page.locator('#live_kbd');
+  await live.click();
+  await live.evaluate(el=>{
+    const seed=el.value;
+    el.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
+    el.value=seed+'かんじ';
+    el.dispatchEvent(new InputEvent('input',{data:'かんじ',isComposing:true,bubbles:true}));
+    el.value=seed+'漢字';
+    el.dispatchEvent(new InputEvent('input',{data:'漢字',isComposing:true,bubbles:true}));
+    el.dispatchEvent(new CompositionEvent('compositionend',{data:'漢字',bubbles:true}));
+    // 確定を兼ねたEnterがcompositionend直後にkeydownで届くIMEがある
+    el.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',keyCode:13,bubbles:true}));
+    el.dispatchEvent(new Event('submit',{cancelable:true,bubbles:true}));
+  });
+  await live.evaluate(el=>el.form.dispatchEvent(new Event('submit',{cancelable:true,bubbles:true})));
+  await page.waitForTimeout(80); // compositionend後の遅延同期(40ms)を待つ
+  await drain();
+  assert.deepEqual(events.filter(e=>e.type==='text').map(e=>e.text),['漢字']);
+  assert.equal(events.filter(e=>e.key==='Enter').length,0,'確定Enterで改行を送らない');
+  // 時間を置いたEnterは普通に送信される
+  await page.waitForTimeout(250);
+  await live.press('Enter');
+  await drain();
+  assert.deepEqual(events.filter(e=>e.key==='Enter').map(e=>e.key),['Enter']);
+}));
+
+test('batch send ignores the Enter that only commits an IME composition',()=>fixture(async({page,events,drain})=>{
+  const ta=page.locator('#kbd');
+  await ta.click();
+  await ta.evaluate(el=>{
+    el.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
+    el.value='にほんご';
+    el.dispatchEvent(new InputEvent('input',{data:'にほんご',isComposing:true,bubbles:true}));
+    el.value='日本語';
+    el.dispatchEvent(new InputEvent('input',{data:'日本語',isComposing:true,bubbles:true}));
+    el.dispatchEvent(new CompositionEvent('compositionend',{data:'日本語',bubbles:true}));
+    // 確定Enter由来の改行要求（合成直後は送信しない）
+    el.dispatchEvent(new InputEvent('beforeinput',{inputType:'insertParagraph',cancelable:true,bubbles:true}));
+    el.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',keyCode:13,bubbles:true}));
+  });
+  await drain();
+  assert.equal(events.length,0,'確定Enterで途中送信しない');
+  assert.match(await ta.inputValue(),/日本語/);
+  await page.waitForTimeout(250);
+  await ta.evaluate(el=>el.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',keyCode:13,bubbles:true})));
+  await drain();
+  assert.equal(events.length,1);assert.equal(events[0].text,'日本語');
+}));
+
+test('live mode does not wipe a new composition started right after a send',()=>fixture(async({page,events,drain})=>{
+  await page.locator('#kmode_live').click();
+  const live=page.locator('#live_kbd');
+  await live.click();
+  await live.pressSequentially('a');
+  await drain();
+  assert.equal(events.filter(e=>e.type==='text').map(e=>e.text).join(''),'a');
+  // 送信直後（リセット猶予中）に次の合成を開始してもフィールドが消えない
+  await live.evaluate(el=>{
+    el.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
+    el.value=el.value+'つ';
+    el.dispatchEvent(new InputEvent('input',{data:'つ',isComposing:true,bubbles:true}));
+  });
+  await page.waitForTimeout(150); // リセット猶予(60ms)をまたいでも消えない
+  assert.match(await live.inputValue(),/つ/);
+  await live.evaluate(el=>{
+    el.value=el.value.slice(0,-1)+'次'; // 合成中の「つ」が確定で「次」に置き換わる
+    el.dispatchEvent(new InputEvent('input',{data:'次',isComposing:true,bubbles:true}));
+    el.dispatchEvent(new CompositionEvent('compositionend',{data:'次',bubbles:true}));
+  });
+  await page.waitForTimeout(80); // compositionend後の遅延同期(40ms)を待つ
+  await drain();
+  assert.equal(events.at(-1).text,'次','合成の確定が送られる');
+}));
+
+test('live mode handles emoji without splitting surrogate pairs',()=>fixture(async({page,events,drain})=>{
+  await page.locator('#kmode_live').click();
+  const live=page.locator('#live_kbd');
+  await live.click();
+  await live.pressSequentially('😀');
+  await drain();
+  const texts=events.filter(e=>e.type==='text').map(e=>e.text);
+  assert.equal(texts.join(''),'😀');
+  assert.equal([...texts.join('')].length,1,'絵文字は1コードポイントで届く');
+  events.length=0;
+  await live.press('Backspace');
+  await drain();
+  assert.equal(events.filter(e=>e.key==='Backspace').length,1,'絵文字1文字はBackspace1回');
 }));
 
 test('armed state keeps remote input controls usable',()=>fixture(async({page})=>{

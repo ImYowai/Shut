@@ -653,10 +653,10 @@ touch.addEventListener('wheel',e=>{
 },{passive:false});
 
 document.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>inp({type:'key',key:b.dataset.k}));
-let composing=false, sendingText=false, lastShift=false;
+let composing=false, sendingText=false, lastShift=false, lastCompEnd=0;
 $('kbd').addEventListener('compositionstart',()=>{composing=true;});
-$('kbd').addEventListener('compositionend',()=>{composing=false;});
-$('kbd').addEventListener('compositioncancel',()=>{composing=false;});
+$('kbd').addEventListener('compositionend',()=>{composing=false;lastCompEnd=Date.now();});
+$('kbd').addEventListener('compositioncancel',()=>{composing=false;lastCompEnd=Date.now();});
 $('kbd').addEventListener('blur',()=>{composing=false;});
 $('kbd_send').onclick=async()=>{
   if(sendingText)return;
@@ -676,13 +676,17 @@ $('kbd_send').onclick=async()=>{
 $('kbd').addEventListener('keydown',e=>{
   lastShift=e.shiftKey;
   if(e.isComposing||composing||e.keyCode===229)return;
-  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('kbd_send').click();}
+  if(e.key==='Enter'&&!e.shiftKey){
+    // 確定直後のEnterはIMEの確定操作の延長（compositionend後にkeydownが届くIMEがある）
+    if(Date.now()-lastCompEnd<200)return;
+    e.preventDefault();$('kbd_send').click();
+  }
 });
 // Androidのソフトキーボードは確定/送信キーがkeyCode 229になりkeydownでは拾えない。
-// beforeinputの改行要求を送信として扱う（Shift併用は改行のまま）。
+// beforeinputの改行要求を送信として扱う（Shift併用・確定操作中は改行のまま）。
 $('kbd').addEventListener('beforeinput',e=>{
   if(e.inputType!=='insertParagraph'&&e.inputType!=='insertLineBreak')return;
-  if(lastShift)return;
+  if(lastShift||e.isComposing||composing||Date.now()-lastCompEnd<200)return;
   e.preventDefault();
   $('kbd_send').click();
 });
@@ -699,6 +703,8 @@ function queueLiveReset(){
   clearTimeout(liveResetTimer);
   liveResetTimer=setTimeout(()=>{
     const el=liveEl();
+    // 次の文節の合成中にリセットすると入力中の文字が消えるため、合成中は延期する
+    if(liveComp){queueLiveReset();return;}
     if(el.value!==livePrev)return;
     el.value=LIVE_SENT;livePrev=LIVE_SENT;
     try{el.setSelectionRange(LIVE_SENT.length,LIVE_SENT.length);}catch{}
@@ -710,7 +716,11 @@ function liveSync(){
   if(v===livePrev)return;
   let i=0;while(i<v.length&&i<livePrev.length&&v[i]===livePrev[i])i++;
   let j=0;while(i+j<v.length&&i+j<livePrev.length&&v[v.length-1-j]===livePrev[livePrev.length-1-j])j++;
-  const removed=livePrev.length-i-j,added=v.slice(i,v.length-j);
+  // サロゲートペア（絵文字等）を差分境界で切断しない。Backspace回数は
+  // コードポイント単位（ペアを2回消さない）。
+  while(i>0&&(v.charCodeAt(i)&0xFC00)===0xDC00)i--;
+  while(j>0&&(v.charCodeAt(v.length-j-1)&0xFC00)===0xD800)j--;
+  const removed=[...livePrev.slice(i,livePrev.length-j)].length,added=v.slice(i,v.length-j);
   livePrev=v;
   for(let k=0;k<removed;k++)inp({type:'key',key:'Backspace'});
   if(added)inp({type:'text',text:added});
@@ -726,19 +736,26 @@ $('live_kbd').addEventListener('compositionstart',()=>{liveComp=true;clearTimeou
 // 中間の読みが確定扱いになるのを防ぐため、直後のイベントが落ち着いてから同期する）。
 // 確定テキストは通常その直後のinputイベントでも拾われるので、こちらは保険。
 $('live_kbd').addEventListener('compositionend',()=>{
-  liveComp=false;
+  liveComp=false;lastCompEnd=Date.now();
   clearTimeout(compEndTimer);
   compEndTimer=setTimeout(()=>{if(!liveComp)liveSync();},40);
 });
-$('live_kbd').addEventListener('compositioncancel',liveDiscard);
+$('live_kbd').addEventListener('compositioncancel',()=>{lastCompEnd=Date.now();liveDiscard();});
 $('live_kbd').addEventListener('blur',liveDiscard);
 $('live_kbd').addEventListener('input',e=>{if(!liveComp&&!e.isComposing)liveSync();});
 $('live_kbd').addEventListener('focus',()=>{liveDrop=false;liveReset();});
 // Enterは値差分に現れないため、keydownと暗黙フォーム送信（Androidのgo/enterキー対策）で拾う。
+// 確定直後のEnterはIMEの確定操作の延長のことがあるので、直後200msはPCへ送らない。
 $('live_kbd').addEventListener('keydown',e=>{
-  if(!e.isComposing&&!liveComp&&e.key==='Enter'&&e.keyCode!==229){e.preventDefault();inp({type:'key',key:'Enter'});}
+  if(!e.isComposing&&!liveComp&&e.key==='Enter'&&e.keyCode!==229){
+    e.preventDefault();
+    if(Date.now()-lastCompEnd>200)inp({type:'key',key:'Enter'});
+  }
 });
-$('klive').addEventListener('submit',e=>{e.preventDefault();inp({type:'key',key:'Enter'});});
+$('klive').addEventListener('submit',e=>{
+  e.preventDefault();
+  if(Date.now()-lastCompEnd>200)inp({type:'key',key:'Enter'});
+});
 function setKmode(live){
   $('kmode_batch').classList.toggle('on',!live);
   $('kmode_live').classList.toggle('on',live);
