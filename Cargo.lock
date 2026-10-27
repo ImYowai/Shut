@@ -2744,10 +2744,18 @@ dependencies = [
  "screenshots",
  "serde",
  "serde_json",
+ "shut-protocol",
  "tao",
  "tokio",
  "windows-sys 0.61.2",
  "wry",
+]
+
+[[package]]
+name = "shut-protocol"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

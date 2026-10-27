@@ -1,6 +1,7 @@
 #![windows_subsystem = "windows"]
 
 mod filewatch;
+mod log;
 mod power;
 mod remote;
 mod server;
@@ -164,13 +165,17 @@ fn eval_loop(state: AppState) {
                 }
             }
             Phase::Countdown { deadline, .. } if Instant::now() >= deadline => {
+                // Windows側のスケジュール済みシャットダウンを再確認する保険として
+                // 即時シャットダウンを発行する（既に進行中なら shutdown.exe が失敗するだけ）。
                 match power::shutdown(st.settings.force_close) {
                     Ok(()) => {
+                        log::line("shutdown executed");
                         st.phase = Phase::Done {
                             message: "シャットダウンを実行しました".into(),
                         }
                     }
                     Err(e) => {
+                        log::line(&format!("shutdown failed: {e}"));
                         st.phase = Phase::Done {
                             message: format!("シャットダウンに失敗しました: {e}"),
                         }

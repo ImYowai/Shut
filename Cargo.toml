@@ -3,7 +3,11 @@ name = "shut"
 version = "0.2.1"
 edition = "2024"
 
+[workspace]
+members = ["crates/*"]
+
 [dependencies]
+shut-protocol = { path = "crates/protocol" }
 arboard = "3.6.3"
 async-stream = "0.3.6"
 axum = "0.8.9"

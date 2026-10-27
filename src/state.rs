@@ -136,15 +136,30 @@ impl Shared {
         };
         let _ = std::fs::remove_file(trigger_file());
         self.settings.save();
+        crate::log::line("armed");
         self.phase = Phase::Armed { timer_deadline };
         Ok(())
     }
 
+    /// カウントダウン開始。タイマー本体は `shutdown /s /t N` として
+    /// Windows側にスケジュールする（このプロセスが終了しても実行される）。
     pub fn fire(&mut self, reason: String) {
-        self.phase = Phase::Countdown {
-            deadline: Instant::now() + Duration::from_secs(self.settings.countdown_secs as u64),
-            reason,
-        };
+        crate::log::line(&format!("fire: {reason}"));
+        let secs = self.settings.countdown_secs;
+        match crate::power::schedule(secs, self.settings.force_close) {
+            Ok(()) => {
+                self.phase = Phase::Countdown {
+                    deadline: Instant::now() + Duration::from_secs(secs as u64),
+                    reason,
+                };
+            }
+            Err(e) => {
+                crate::log::line(&format!("schedule failed: {e}"));
+                self.phase = Phase::Done {
+                    message: format!("シャットダウンの予約に失敗しました: {e}"),
+                };
+            }
+        }
         let _ = std::fs::remove_file(trigger_file());
     }
 

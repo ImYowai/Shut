@@ -182,7 +182,13 @@ async fn api_arm(State(ctx): State<Ctx>) -> impl IntoResponse {
 }
 
 async fn api_disarm(State(ctx): State<Ctx>) -> impl IntoResponse {
-    ctx.state.lock().unwrap().phase = Phase::Config;
+    let mut st = ctx.state.lock().unwrap();
+    // カウントダウン中の中止はWindows側の予約も解除する
+    if matches!(st.phase, Phase::Countdown { .. }) {
+        let _ = crate::power::abort();
+        crate::log::line("disarm: countdown aborted");
+    }
+    st.phase = Phase::Config;
     Json(json!({"ok": true}))
 }
 
@@ -194,16 +200,20 @@ async fn api_shutdown(State(ctx): State<Ctx>, body: Option<Json<serde_json::Valu
         let force = ctx.state.lock().unwrap().settings.force_close;
         return match power::shutdown(force) {
             Ok(()) => {
+                crate::log::line("shutdown now: executed");
                 ctx.state.lock().unwrap().phase = Phase::Done {
                     message: "シャットダウンを実行しました".into(),
                 };
                 Json(json!({"ok": true})).into_response()
             }
-            Err(e) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": e.to_string()})),
-            )
-                .into_response(),
+            Err(e) => {
+                crate::log::line(&format!("shutdown now: failed {e}"));
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": e.to_string()})),
+                )
+                    .into_response()
+            }
         };
     }
     ctx.state
@@ -215,6 +225,7 @@ async fn api_shutdown(State(ctx): State<Ctx>, body: Option<Json<serde_json::Valu
 
 async fn api_cancel(State(ctx): State<Ctx>) -> impl IntoResponse {
     let _ = power::abort();
+    crate::log::line("cancel");
     ctx.state.lock().unwrap().phase = Phase::Config;
     Json(json!({"ok": true}))
 }

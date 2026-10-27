@@ -3,8 +3,6 @@ use std::net::UdpSocket;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use serde::Deserialize;
-
 use crate::state::{AppState, TunnelState};
 
 // ---------- 画面キャプチャ ----------
@@ -68,28 +66,7 @@ pub fn capture_jpeg(monitor: usize, max_width: u32, quality: u8) -> Option<Vec<u
 
 // ---------- 入力注入 ----------
 
-#[derive(Deserialize)]
-pub struct InputEvent {
-    #[serde(rename = "type")]
-    pub kind: String,
-    #[serde(default)]
-    pub x: f64,
-    #[serde(default)]
-    pub y: f64,
-    #[serde(default)]
-    pub button: String,
-    #[serde(default)]
-    pub dy: f64,
-    #[serde(default)]
-    pub key: String,
-    #[serde(default)]
-    pub modifiers: Vec<String>,
-    #[serde(default)]
-    pub text: String,
-    /// 対象モニタ（ミラー表示と同じインデックス）
-    #[serde(default)]
-    pub m: usize,
-}
+pub use shut_protocol::InputEvent;
 
 fn screen_size() -> (i32, i32) {
     use windows_sys::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
