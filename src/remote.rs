@@ -40,11 +40,25 @@ pub fn cursor_info() -> Option<serde_json::Value> {
     })
 }
 
-/// 指定モニタをJPEG化して返す（範囲外はプライマリにフォールバック）
-pub fn capture_jpeg(monitor: usize, max_width: u32, quality: u8) -> Option<Vec<u8>> {
+/// キャプチャ内容の軽量ハッシュ。フルスキャンなので小さな変化も拾う。
+fn frame_hash(buf: &[u8]) -> u64 {
+    let mut h = buf.len() as u64;
+    for chunk in buf.as_chunks::<16>().0 {
+        let (a, b) = chunk.split_at(8);
+        let x = u64::from_le_bytes(a.try_into().unwrap());
+        let y = u64::from_le_bytes(b.try_into().unwrap());
+        h = (h ^ x).wrapping_mul(0x9e3779b97f4a7c15).rotate_left(13) ^ y;
+    }
+    h
+}
+
+/// 指定モニタをJPEG化して返す（範囲外はプライマリにフォールバック）。
+/// 戻り値は (JPEG, 生フレームのハッシュ)。ハッシュが前回と同じなら送信を省ける。
+pub fn capture_jpeg(monitor: usize, max_width: u32, quality: u8) -> Option<(Vec<u8>, u64)> {
     let screens = screenshots::Screen::all().ok()?;
     let screen = screens.get(monitor).or_else(|| screens.first())?;
     let img = screen.capture().ok()?; // RgbaImage
+    let hash = frame_hash(img.as_raw());
     let (w, h) = (img.width(), img.height());
     let img = if w > max_width {
         let nh = h * max_width / w;
@@ -61,7 +75,7 @@ pub fn capture_jpeg(monitor: usize, max_width: u32, quality: u8) -> Option<Vec<u
             image::ColorType::Rgba8,
         )
         .ok()?;
-    Some(buf)
+    Some((buf, hash))
 }
 
 // ---------- 入力注入 ----------

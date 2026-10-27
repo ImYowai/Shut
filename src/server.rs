@@ -3,25 +3,24 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
 use axum::body::{Body, Bytes};
-use axum::extract::{DefaultBodyLimit, Query, Request, State};
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Query, Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::middleware::{self, Next};
-use axum::response::{Html, IntoResponse, Response};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use futures_util::{SinkExt, StreamExt};
 use serde_json::json;
+use std::net::SocketAddr;
 
 use crate::power;
 use crate::remote::{self, InputEvent};
 use crate::state::{AppState, Phase, Settings, TunnelState};
-
-const INDEX_HTML: &str = include_str!("../ui/index.html");
-const SHELL_CSS: &str = include_str!("../ui/shell.css");
-const SHELL_JS: &str = include_str!("../ui/shell.js");
+use crate::video;
 
 pub struct ServerCtx {
     pub state: AppState,
-    pub token: String,
     pub port: u16,
     pub lan_url: String,
 }
@@ -30,28 +29,7 @@ type Ctx = Arc<ServerCtx>;
 
 pub fn router(ctx: Ctx) -> Router {
     Router::new()
-        .route("/", get(index))
-        .route(
-            "/shell.css",
-            get(|| async {
-                (
-                    [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
-                    SHELL_CSS,
-                )
-            }),
-        )
-        .route(
-            "/shell.js",
-            get(|| async {
-                (
-                    [(
-                        header::CONTENT_TYPE,
-                        "application/javascript; charset=utf-8",
-                    )],
-                    SHELL_JS,
-                )
-            }),
-        )
+        .route("/api/auth", post(api_auth))
         .route("/api/state", get(api_state))
         .route("/api/settings", post(api_settings))
         .route("/api/arm", post(api_arm))
@@ -69,6 +47,7 @@ pub fn router(ctx: Ctx) -> Router {
             post(api_upload).route_layer(DefaultBodyLimit::max(256 * 1024 * 1024)),
         )
         .route("/stream.mjpeg", get(mjpeg))
+        .route("/ws/video", get(ws_video))
         .route("/qr", get(qr))
         .layer(middleware::from_fn_with_state(ctx.clone(), auth))
         .with_state(ctx)
@@ -83,19 +62,30 @@ async fn auth(
     req: Request,
     next: Next,
 ) -> Response {
-    // ページ本体は無認証で配信し、トークン入力UIに繋げる（APIは全て認証必須）
-    if matches!(req.uri().path(), "/" | "/shell.css" | "/shell.js") {
+    // /api/auth だけ無認証（パスワードを検証してトークンを発行する）
+    if req.uri().path() == "/api/auth" {
         return next.run(req).await;
     }
-    let ok = q.get("t").is_some_and(|t| *t == ctx.token)
-        || headers
-            .get("x-shut-token")
-            .and_then(|v| v.to_str().ok())
-            .is_some_and(|t| t == ctx.token)
-        || headers
-            .get(header::COOKIE)
-            .and_then(|v| v.to_str().ok())
-            .is_some_and(|c| c.contains(&format!("shut_token={}", ctx.token)));
+    let candidate = q
+        .get("t")
+        .cloned()
+        .or_else(|| {
+            headers
+                .get("x-shut-token")
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_string)
+        })
+        .or_else(|| {
+            headers
+                .get(header::COOKIE)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|c| {
+                    c.split(';').find_map(|p| p.trim().strip_prefix("shut_token=")).map(str::to_string)
+                })
+        });
+    let ok = candidate.is_some_and(|t| {
+        ctx.state.lock().unwrap().auth.valid_token(&t)
+    });
     if ok {
         next.run(req).await
     } else {
@@ -103,10 +93,33 @@ async fn auth(
     }
 }
 
-// ---------- ページ ----------
+// ---------- 認証 ----------
 
-async fn index() -> impl IntoResponse {
-    Html(INDEX_HTML)
+/// POST /api/auth {"password": "..."} -> {"token": "..."}
+/// パスワードを argon2 ハッシュと検証し、セッショントークンを発行する。
+/// 連続失敗で指数的バックオフ。トークンはプロセス生存中のみ有効。
+async fn api_auth(
+    State(ctx): State<Ctx>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let pw = body
+        .get("password")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    if pw.is_empty() || pw.len() > 256 {
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "password required"})))
+            .into_response();
+    }
+    let mut st = ctx.state.lock().unwrap();
+    let hash = st.settings.password_hash.clone();
+    match st.auth.attempt(peer.ip(), pw, hash.as_deref()) {
+        Ok(token) => Json(json!({"ok": true, "token": token})).into_response(),
+        Err(e) => {
+            crate::log::line(&format!("auth failed from {peer}: {e}"));
+            (StatusCode::UNAUTHORIZED, Json(json!({"error": e}))).into_response()
+        }
+    }
 }
 
 // ---------- API ----------
@@ -161,8 +174,8 @@ async fn api_state(State(ctx): State<Ctx>) -> Json<serde_json::Value> {
         "cursor": remote::cursor_info(),
         "mirror_clients": st.mirror_clients,
         "lan_url": ctx.lan_url,
-        "token": ctx.token,
         "port": ctx.port,
+        "password_set": st.settings.password_hash.is_some(),
         "settings": st.settings,
     }))
 }
@@ -268,6 +281,92 @@ async fn api_input(State(ctx): State<Ctx>, Json(ev): Json<InputEvent>) -> impl I
         )
             .into_response(),
     }
+}
+
+// ---------- H.264 ライブストリーム (WebSocket) ----------
+//
+// 下り: 接続直後にJSON設定 -> 以後 [flags][Annex-B] のバイナリ連打
+// 上り: テキストJSONの InputEvent (HTTP POST /input と等価だが遅延が小さい)
+
+async fn ws_video(
+    ws: WebSocketUpgrade,
+    State(ctx): State<Ctx>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| video_socket(socket, ctx))
+}
+
+async fn video_socket(mut socket: WebSocket, ctx: Ctx) {
+    if !ctx.state.lock().unwrap().settings.mirror_enabled {
+        let _ = socket
+            .send(Message::Text(
+                r#"{"type":"error","error":"mirror disabled"}"#.into(),
+            ))
+            .await;
+        return;
+    }
+    let hub = video::hub();
+    let Some((w, h)) = hub.dims().await else {
+        let _ = socket
+            .send(Message::Text(
+                r#"{"type":"error","error":"video encoder unavailable"}"#.into(),
+            ))
+            .await;
+        return;
+    };
+
+    let control = ctx.state.lock().unwrap().settings.control_enabled;
+    let mut rx = hub.subscribe();
+    hub.kick(); // 新規購読者のために次フレームをIDRにする
+    ctx.state.lock().unwrap().mirror_clients += 1;
+    let _guard = ClientGuard(ctx.state.clone());
+
+    let (mut sink, mut stream) = socket.split();
+    let writer = tokio::spawn(async move {
+        if sink
+            .send(Message::Text(
+                json!({"type":"config","codec":"h264-annexb","w":w,"h":h})
+                    .to_string()
+                    .into(),
+            ))
+            .await
+            .is_err()
+        {
+            return;
+        }
+        loop {
+            match rx.recv().await {
+                Ok(pkt) => {
+                    if sink.send(Message::Binary(pkt.into())).await.is_err() {
+                        break;
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                    continue; // 古いフレームは捨てて最新へ
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    // 上り: テキストJSONの入力イベント (control_enabledの時だけ適用)
+    while let Some(msg) = stream.next().await {
+        match msg {
+            Ok(Message::Text(t)) => {
+                if !control {
+                    continue;
+                }
+                if let Ok(ev) = serde_json::from_str::<InputEvent>(&t) {
+                    let _ = tokio::task::spawn_blocking(move || {
+                        remote::handle_input(&ev)
+                    })
+                    .await;
+                }
+            }
+            Ok(Message::Close(_)) | Err(_) => break,
+            _ => {}
+        }
+    }
+    writer.abort();
 }
 
 // ---------- クリップボード・ファイル ----------
@@ -412,24 +511,30 @@ async fn mjpeg(
 
     let stream = async_stream::stream! {
         let _guard = ClientGuard(state);
-        let mut first = true;
+        const FRAME_BUDGET: Duration = Duration::from_millis(30); // 目標~33fps
+        let mut last_hash = 0u64;
         loop {
-            let jpeg = tokio::task::spawn_blocking(move || remote::capture_jpeg(m, w, q))
+            let started = std::time::Instant::now();
+            let frame = tokio::task::spawn_blocking(move || remote::capture_jpeg(m, w, q))
                 .await
                 .ok()
                 .flatten();
-            if let Some(jpeg) = jpeg {
-                let head = format!(
-                    "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: {}\r\n\r\n",
-                    jpeg.len()
-                );
-                yield Ok::<_, std::io::Error>(head.into_bytes());
-                yield Ok(jpeg);
-                yield Ok(b"\r\n".to_vec());
-                if !first {
-                    tokio::time::sleep(Duration::from_millis(60)).await;
+            if let Some((jpeg, hash)) = frame {
+                if hash != last_hash {
+                    last_hash = hash;
+                    let head = format!(
+                        "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: {}\r\n\r\n",
+                        jpeg.len()
+                    );
+                    yield Ok::<_, std::io::Error>(head.into_bytes());
+                    yield Ok(jpeg);
+                    yield Ok(b"\r\n".to_vec());
                 }
-                first = false;
+                // キャプチャ+エンコードに掛かった時間を引いた分だけ待つ
+                let elapsed = started.elapsed();
+                if elapsed < FRAME_BUDGET {
+                    tokio::time::sleep(FRAME_BUDGET - elapsed).await;
+                }
             } else {
                 tokio::time::sleep(Duration::from_millis(500)).await;
             }
@@ -449,6 +554,7 @@ async fn mjpeg(
 
 // ---------- QR ----------
 
+#[allow(dead_code)]
 async fn qr(Query(q): Query<HashMap<String, String>>) -> impl IntoResponse {
     let Some(text) = q.get("u") else {
         return (StatusCode::BAD_REQUEST, "u required").into_response();

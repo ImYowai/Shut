@@ -29,6 +29,9 @@ pub struct Settings {
     pub mirror_enabled: bool,
     /// リモート操作（マウス/キー注入）を許可
     pub control_enabled: bool,
+    /// 接続パスワード (argon2id PHC文字列)。未設定のホストは認証を受理しない。
+    #[serde(default)]
+    pub password_hash: Option<String>,
 }
 
 impl Default for Settings {
@@ -46,6 +49,7 @@ impl Default for Settings {
             countdown_secs: 60,
             mirror_enabled: true,
             control_enabled: true,
+            password_hash: None,
         }
     }
 }
@@ -103,6 +107,8 @@ pub struct Shared {
     pub tunnel_child: Option<Child>,
     /// ミラー視聴クライアント数
     pub mirror_clients: usize,
+    /// パスワード認証の発行トークンとレート制限
+    pub auth: crate::auth::AuthState,
 }
 
 pub type AppState = Arc<Mutex<Shared>>;
@@ -116,6 +122,7 @@ pub fn new_state() -> AppState {
         tunnel: TunnelState::Off,
         tunnel_child: None,
         mirror_clients: 0,
+        auth: crate::auth::AuthState::default(),
     }))
 }
 
