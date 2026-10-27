@@ -73,9 +73,7 @@ pub fn new() -> Option<Duplicator> {
             MiscFlags: 0,
         };
         let mut staging = None;
-        device
-            .CreateTexture2D(&td, None, Some(&mut staging))
-            .ok()?;
+        device.CreateTexture2D(&td, None, Some(&mut staging)).ok()?;
 
         Some(Duplicator {
             _device: device,
@@ -98,10 +96,7 @@ impl Duplicator {
         unsafe {
             let mut res: Option<IDXGIResource> = None;
             let mut info = DXGI_OUTDUPL_FRAME_INFO::default();
-            match self
-                .dup
-                .AcquireNextFrame(timeout_ms, &mut info, &mut res)
-            {
+            match self.dup.AcquireNextFrame(timeout_ms, &mut info, &mut res) {
                 Ok(()) => {}
                 // TIMEOUT = 画面変化なし
                 Err(_) => return None,
@@ -132,10 +127,7 @@ impl Duplicator {
                 }
             }
             self.ctx.Unmap(&self.staging, 0);
-            Some(Frame {
-                data,
-            
-            })
+            Some(Frame { data })
         }
     }
 

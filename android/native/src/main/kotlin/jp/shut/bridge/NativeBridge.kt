@@ -43,28 +43,38 @@ class NativeBridge(private val activity: Activity) {
             }
         }
     }
-    fun openConnection(url: String) {
+    fun openConnection(url: String, password: String) {
         activity.runOnUiThread {
             try {
-                // The URL never travels in an Intent or Bundle: only a static
-                // hand-off plus the app-private recents store for reconnects.
-                ConnectionSession.pending = url
+                // The URL/password never travels in an Intent or Bundle: only a
+                // static hand-off plus the app-private recents store for reconnects.
+                ConnectionSession.pending = ConnectionSession.Entry(url, password)
                 activity.startActivity(Intent(activity, RemoteActivity::class.java))
                 // 起動できた時点で履歴化する（クラッシュ・強制終了後の再接続用）
-                ConnectionSession.saveRecent(activity, url)
+                ConnectionSession.saveRecent(activity, url, password)
             } catch (_: Exception) {
                 ConnectionSession.pending = null
                 complete("error:接続画面を開けませんでした。アプリを開き直してください。")
             }
         }
     }
-    fun saveRecent(url: String) = ConnectionSession.saveRecent(activity, url)
+    fun saveRecent(line: String) = ConnectionSession.saveRecent(activity, line)
     fun loadRecent(): String = ConnectionSession.recents(activity).joinToString("\n")
     fun clearRecent() = ConnectionSession.clearRecents(activity)
 }
 internal object ConnectionSession {
-    var pending: String? = null
-    fun take(): String? { val value = pending; pending = null; return value }
+    /** URLとパスワードの組。履歴は "url\tpassword" の1行として保存される。 */
+    class Entry(val url: String, val password: String)
+    var pending: Entry? = null
+    fun take(): Entry? { val value = pending; pending = null; return value }
+
+    /** 履歴行 ("url\tpassword" または旧形式の url のみ) を Entry へ。 */
+    fun parseEntry(line: String): Entry? {
+        if (line.isBlank()) return null
+        val tab = line.indexOf('\t')
+        return if (tab >= 0) Entry(line.substring(0, tab), line.substring(tab + 1))
+        else Entry(line, "")
+    }
 
     // クラッシュ・プロセス再生成後のワンタップ再接続用に、直近の接続URLを
     // アプリ専用のSharedPreferencesに保持する（最大3件、最新順）。
@@ -72,8 +82,13 @@ internal object ConnectionSession {
     private const val KEY = "recent_urls"
     private const val LIMIT = 3
 
-    fun saveRecent(context: Context, url: String) {
-        val next = (listOf(url) + recents(context).filter { it != url }).take(LIMIT)
+    fun saveRecent(context: Context, url: String, password: String = "") {
+        saveRecent(context, if (password.isEmpty()) url else "$url\t$password")
+    }
+    fun saveRecent(context: Context, line: String) {
+        // 同一URLの古い行は新しい認証情報で置き換える
+        val url = line.substringBefore('\t')
+        val next = (listOf(line) + recents(context).filter { it.substringBefore('\t') != url }).take(LIMIT)
         // commit(): force-stop/クラッシュで apply() の非同期書き込みが失われるのを防ぐ
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString(KEY, next.joinToString("\n")).commit()

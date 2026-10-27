@@ -16,7 +16,7 @@ mod platform {
         pub type NativeBridge;
         pub fn start_scan(this: &NativeBridge);
         pub fn take_result(this: &NativeBridge) -> String;
-        pub fn open_connection(this: &NativeBridge, url: String);
+        pub fn open_connection(this: &NativeBridge, url: String, password: String);
         pub fn save_recent(this: &NativeBridge, url: String);
         pub fn load_recent(this: &NativeBridge) -> String;
         pub fn clear_recent(this: &NativeBridge);
@@ -92,8 +92,8 @@ mod platform {
                 .map(|error| Event::Error(error.to_string()))
         }
     }
-    pub fn open(url: &str) -> Result<(), String> {
-        open_connection(bridge()?, url.to_string())
+    pub fn open(url: &str, password: &str) -> Result<(), String> {
+        open_connection(bridge()?, url.to_string(), password.to_string())
             .map_err(|_| "接続画面を開始できません。アプリを開き直してください。".into())
     }
     pub fn record_recent(url: &str) {
@@ -130,7 +130,7 @@ mod platform {
     pub fn poll() -> Option<Event> {
         None
     }
-    pub fn open(_: &str) -> Result<(), String> {
+    pub fn open(_: &str, _: &str) -> Result<(), String> {
         Err("PC画面への接続はAndroidアプリで利用できます。".into())
     }
     pub fn record_recent(_: &str) {}

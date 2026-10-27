@@ -49,8 +49,8 @@ fn main() {
         Some("--set-password") => {
             attach_console();
             let pw = std::env::args().nth(2).unwrap_or_default();
-            if pw.chars().count() < 6 {
-                eprintln!("shut: パスワードは6文字以上にしてください");
+            if pw.chars().count() < 8 {
+                eprintln!("shut: パスワードは8文字以上にしてください");
                 std::process::exit(1);
             }
             match auth::hash_password(&pw) {

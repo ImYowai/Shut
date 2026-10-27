@@ -86,9 +86,7 @@ pub fn protocol(
     let guard = LATEST.read().unwrap();
     match &*guard {
         None => base().status(404).body(Cow::Borrowed(&[][..])).unwrap(),
-        Some(f) if f.seq <= seen_seq => {
-            base().status(204).body(Cow::Borrowed(&[][..])).unwrap()
-        }
+        Some(f) if f.seq <= seen_seq => base().status(204).body(Cow::Borrowed(&[][..])).unwrap(),
         Some(f) => {
             let mut body = Vec::with_capacity(16 + f.rgba.len());
             body.extend_from_slice(&f.w.to_le_bytes());

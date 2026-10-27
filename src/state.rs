@@ -44,7 +44,7 @@ impl Default for Settings {
             trigger_file_enabled: true,
             filewatch_enabled: true,
             watch_dirs: "~/.claude/projects, ~/.codex/sessions, %APPDATA%/Devin/User/acp-messages, %APPDATA%/Devin/cli".into(),
-            file_idle_minutes: 3,
+            file_idle_minutes: 10,
             force_close: false,
             countdown_secs: 60,
             mirror_enabled: true,

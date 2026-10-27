@@ -104,8 +104,8 @@ fn Menu(on_pick: EventHandler<Mode>) -> Element {
 
 /// パスワードを設定して保存する。戻り値は表示メッセージ。
 fn apply_password(state: &AppState, pw: &str) -> Result<&'static str, String> {
-    if pw.chars().count() < 6 {
-        return Err("6文字以上にしてください".into());
+    if pw.chars().count() < 8 {
+        return Err("8文字以上にしてください".into());
     }
     let h = auth::hash_password(pw)?;
     let mut st = state.lock().unwrap();
@@ -155,15 +155,15 @@ fn Host(on_back: EventHandler) -> Element {
         }
     };
 
-    let qr = info.read().as_ref().and_then(|r| {
-        r.as_ref().ok().and_then(|i| qr_data_url(&i.lan_url))
-    });
-    let lan_url = info.read().as_ref().and_then(|r| {
-        r.as_ref().ok().map(|i| i.lan_url.clone())
-    });
-    let start_err = info.read().as_ref().and_then(|r| {
-        r.as_ref().err().cloned()
-    });
+    let qr = info
+        .read()
+        .as_ref()
+        .and_then(|r| r.as_ref().ok().and_then(|i| qr_data_url(&i.lan_url)));
+    let lan_url = info
+        .read()
+        .as_ref()
+        .and_then(|r| r.as_ref().ok().map(|i| i.lan_url.clone()));
+    let start_err = info.read().as_ref().and_then(|r| r.as_ref().err().cloned());
 
     macro_rules! pw_submit {
         () => {{
@@ -199,7 +199,7 @@ fn Host(on_back: EventHandler) -> Element {
                     div { class: "input-row",
                         input {
                             r#type: "password",
-                            placeholder: "6文字以上",
+                            placeholder: "8文字以上",
                             value: "{pw_input}",
                             oninput: move |e| pw_input.set(e.value()),
                             onkeydown: {
@@ -347,7 +347,7 @@ fn Host(on_back: EventHandler) -> Element {
                                     let _ = state.lock().unwrap().arm();
                                 }
                             },
-                            "監視を開始"
+                            "シャットダウン監視を開始"
                         }
                     },
                     Phase::Armed { .. } => rsx! {
@@ -360,7 +360,7 @@ fn Host(on_back: EventHandler) -> Element {
                                     state.lock().unwrap().phase = Phase::Config;
                                 }
                             },
-                            "監視を解除"
+                            "シャットダウン監視を解除"
                         }
                     },
                     Phase::Countdown { deadline, reason } => {
@@ -522,10 +522,7 @@ fn Client(on_back: EventHandler) -> Element {
 
     use_future(move || async move {
         loop {
-            let result = connecting
-                .read()
-                .as_ref()
-                .and_then(|rx| rx.try_recv().ok());
+            let result = connecting.read().as_ref().and_then(|rx| rx.try_recv().ok());
             if let Some(result) = result {
                 connecting.set(None);
                 match result {
@@ -541,19 +538,17 @@ fn Client(on_back: EventHandler) -> Element {
         }
     });
 
-    let mut start_connect = move |url: String, pw: String| {
-        match validate_connection(&url) {
-            Ok(target) => {
-                input.set(url);
-                message.set("接続しています…".into());
-                connecting.set(Some(clientnet::connect(
-                    target.base_url(),
-                    target.token(),
-                    pw,
-                )));
-            }
-            Err(error) => message.set(error.into()),
+    let mut start_connect = move |url: String, pw: String| match validate_connection(&url) {
+        Ok(target) => {
+            input.set(url);
+            message.set("接続しています…".into());
+            connecting.set(Some(clientnet::connect(
+                target.base_url(),
+                target.token(),
+                pw,
+            )));
         }
+        Err(error) => message.set(error.into()),
     };
 
     // `shut <url>` / SHUT_REMOTE_URL で自動接続
@@ -934,12 +929,12 @@ return 'ok';}})()"#
                     button {
                         class: "quiet",
                         onclick: move |_| remote.read().send(Job::Arm),
-                        "監視を開始"
+                        "シャットダウン監視を開始"
                     }
                     button {
                         class: "quiet",
                         onclick: move |_| remote.read().send(Job::Disarm),
-                        "監視を解除"
+                        "シャットダウン監視を解除"
                     }
                     button {
                         class: "quiet warn",

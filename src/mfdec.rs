@@ -8,9 +8,9 @@
 use std::collections::VecDeque;
 
 use rayon::prelude::*;
-use windows::core::Interface;
 use windows::Win32::Media::MediaFoundation::*;
 use windows::Win32::System::Com::*;
+use windows::core::Interface;
 
 pub struct Frame {
     pub width: u32,
@@ -61,10 +61,11 @@ pub fn new(width: u32, height: u32) -> Option<H264Decoder> {
             let list = std::slice::from_raw_parts(acts, nacts as usize);
             for act in list.iter().flatten() {
                 if let Ok(t) = act.ActivateObject::<IMFTransform>()
-                    && let Some(d) = H264Decoder::configure(t, width, height) {
-                        CoTaskMemFree(Some(acts.cast()));
-                        return Some(d);
-                    }
+                    && let Some(d) = H264Decoder::configure(t, width, height)
+                {
+                    CoTaskMemFree(Some(acts.cast()));
+                    return Some(d);
+                }
             }
             CoTaskMemFree(Some(acts.cast()));
         }
@@ -121,7 +122,10 @@ impl H264Decoder {
                 .map(|v| v != 0)
                 .unwrap_or(false);
             let evgen = if is_async {
-                attrs.as_ref()?.SetUINT32(&MF_TRANSFORM_ASYNC_UNLOCK, 1).ok()?;
+                attrs
+                    .as_ref()?
+                    .SetUINT32(&MF_TRANSFORM_ASYNC_UNLOCK, 1)
+                    .ok()?;
                 t.cast::<IMFMediaEventGenerator>().ok()
             } else {
                 None
@@ -155,40 +159,47 @@ impl H264Decoder {
         out
     }
 
-    unsafe fn decode_sync(&mut self, annexb: &[u8], out: &mut Vec<Frame>) { unsafe {
-        let Some(sample) = self.make_input(annexb) else { return };
-        match self.t.ProcessInput(0, &sample, 0) {
-            Ok(()) | Err(_) => {}
+    unsafe fn decode_sync(&mut self, annexb: &[u8], out: &mut Vec<Frame>) {
+        unsafe {
+            let Some(sample) = self.make_input(annexb) else {
+                return;
+            };
+            match self.t.ProcessInput(0, &sample, 0) {
+                Ok(()) | Err(_) => {}
+            }
+            self.drain(out);
         }
-        self.drain(out);
-    }}
+    }
 
-    unsafe fn pump(&mut self, out: &mut Vec<Frame>, budget: u32) { unsafe {
-        let Some(evgen) = self.evgen.clone() else {
-            return;
-        };
-        for _ in 0..budget.max(1) {
-            match evgen.GetEvent(MF_EVENT_FLAG_NO_WAIT) {
-                Ok(ev) => match ev.GetType().map(|t| t as i32) {
-                    Ok(601) => {
-                        // NeedInput
-                        if let Some(data) = self.pending.pop_front()
-                            && let Some(s) = self.make_input(&data) {
+    unsafe fn pump(&mut self, out: &mut Vec<Frame>, budget: u32) {
+        unsafe {
+            let Some(evgen) = self.evgen.clone() else {
+                return;
+            };
+            for _ in 0..budget.max(1) {
+                match evgen.GetEvent(MF_EVENT_FLAG_NO_WAIT) {
+                    Ok(ev) => match ev.GetType().map(|t| t as i32) {
+                        Ok(601) => {
+                            // NeedInput
+                            if let Some(data) = self.pending.pop_front()
+                                && let Some(s) = self.make_input(&data)
+                            {
                                 let _ = self.t.ProcessInput(0, &s, 0);
                             }
+                        }
+                        Ok(602) => self.drain(out), // HaveOutput
+                        _ => {}
+                    },
+                    Err(_) => {
+                        if self.pending.is_empty() && !out.is_empty() {
+                            break;
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(1));
                     }
-                    Ok(602) => self.drain(out), // HaveOutput
-                    _ => {}
-                },
-                Err(_) => {
-                    if self.pending.is_empty() && !out.is_empty() {
-                        break;
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(1));
                 }
             }
         }
-    }}
+    }
 
     fn make_input(&self, annexb: &[u8]) -> Option<IMFSample> {
         unsafe {
@@ -204,57 +215,61 @@ impl H264Decoder {
         }
     }
 
-    unsafe fn drain(&mut self, out: &mut Vec<Frame>) { unsafe {
-        loop {
-            let p_sample = if self.mft_provides_samples {
-                None
-            } else {
-                let s = MFCreateSample().unwrap();
-                let b = MFCreateMemoryBuffer(self.out_sample_size as u32).unwrap();
-                s.AddBuffer(&b).unwrap();
-                Some(s)
-            };
-            let mut arr = [MFT_OUTPUT_DATA_BUFFER {
-                dwStreamID: 0,
-                pSample: std::mem::ManuallyDrop::new(p_sample),
-                dwStatus: 0,
-                pEvents: std::mem::ManuallyDrop::new(None),
-            }];
-            let mut status = 0u32;
-            let r = self.t.ProcessOutput(0, &mut arr, &mut status);
-            match r {
-                Ok(()) => {
-                    if let Some(s) = arr[0].pSample.as_ref()
-                        && let Some(f) = sample_to_rgba(s, self.out_width, self.out_height)
+    unsafe fn drain(&mut self, out: &mut Vec<Frame>) {
+        unsafe {
+            loop {
+                let p_sample = if self.mft_provides_samples {
+                    None
+                } else {
+                    let s = MFCreateSample().unwrap();
+                    let b = MFCreateMemoryBuffer(self.out_sample_size as u32).unwrap();
+                    s.AddBuffer(&b).unwrap();
+                    Some(s)
+                };
+                let mut arr = [MFT_OUTPUT_DATA_BUFFER {
+                    dwStreamID: 0,
+                    pSample: std::mem::ManuallyDrop::new(p_sample),
+                    dwStatus: 0,
+                    pEvents: std::mem::ManuallyDrop::new(None),
+                }];
+                let mut status = 0u32;
+                let r = self.t.ProcessOutput(0, &mut arr, &mut status);
+                match r {
+                    Ok(()) => {
+                        if let Some(s) = arr[0].pSample.as_ref()
+                            && let Some(f) = sample_to_rgba(s, self.out_width, self.out_height)
                         {
                             out.push(f);
                         }
-                }
-                Err(e) => {
-                    if e.code() == MF_E_TRANSFORM_STREAM_CHANGE {
-                        self.reset_output_type();
-                        continue;
                     }
-                    break;
+                    Err(e) => {
+                        if e.code() == MF_E_TRANSFORM_STREAM_CHANGE {
+                            self.reset_output_type();
+                            continue;
+                        }
+                        break;
+                    }
                 }
             }
         }
-    }}
+    }
 
     /// 解像度変更後の出力タイプ再設定
-    unsafe fn reset_output_type(&mut self) { unsafe {
-        for i in 0..8 {
-            let Ok(mt) = self.t.GetOutputAvailableType(0, i) else {
-                break;
-            };
-            if self.t.SetOutputType(0, &mt, 0).is_ok() {
-                let v = mt.GetUINT64(&MF_MT_FRAME_SIZE).unwrap_or(0);
-                self.out_width = (v >> 32) as u32;
-                self.out_height = v as u32;
-                return;
+    unsafe fn reset_output_type(&mut self) {
+        unsafe {
+            for i in 0..8 {
+                let Ok(mt) = self.t.GetOutputAvailableType(0, i) else {
+                    break;
+                };
+                if self.t.SetOutputType(0, &mt, 0).is_ok() {
+                    let v = mt.GetUINT64(&MF_MT_FRAME_SIZE).unwrap_or(0);
+                    self.out_width = (v >> 32) as u32;
+                    self.out_height = v as u32;
+                    return;
+                }
             }
         }
-    }}
+    }
 }
 
 fn pack32(hi: u32, lo: u32) -> u64 {
@@ -295,24 +310,26 @@ fn sample_to_rgba(s: &IMFSample, w: u32, h: u32) -> Option<Frame> {
         let uv_plane = std::slice::from_raw_parts(ptr.add(y_size), stride * h / 2);
 
         let mut rgba = vec![0u8; w * h * 4];
-        rgba.par_chunks_mut(w * 4).enumerate().for_each(|(row, rrow)| {
-            let yrow = &y_plane[row * stride..row * stride + w];
-            let uvrow = &uv_plane[(row / 2) * stride..];
-            for x in 0..w {
-                let yy = yrow[x] as i32 - 16;
-                let u = uvrow[(x / 2) * 2] as i32 - 128;
-                let v = uvrow[(x / 2) * 2 + 1] as i32 - 128;
-                let c = (yy * 76309) >> 16; // 1.164 * (Y-16)
-                let r = c + ((v * 117489) >> 16);
-                let g = c - ((u * 13975) >> 16) - ((v * 34952) >> 16);
-                let bl = c + ((u * 138438) >> 16);
-                let o = x * 4;
-                rrow[o] = r.clamp(0, 255) as u8;
-                rrow[o + 1] = g.clamp(0, 255) as u8;
-                rrow[o + 2] = bl.clamp(0, 255) as u8;
-                rrow[o + 3] = 255;
-            }
-        });
+        rgba.par_chunks_mut(w * 4)
+            .enumerate()
+            .for_each(|(row, rrow)| {
+                let yrow = &y_plane[row * stride..row * stride + w];
+                let uvrow = &uv_plane[(row / 2) * stride..];
+                for x in 0..w {
+                    let yy = yrow[x] as i32 - 16;
+                    let u = uvrow[(x / 2) * 2] as i32 - 128;
+                    let v = uvrow[(x / 2) * 2 + 1] as i32 - 128;
+                    let c = (yy * 76309) >> 16; // 1.164 * (Y-16)
+                    let r = c + ((v * 117489) >> 16);
+                    let g = c - ((u * 13975) >> 16) - ((v * 34952) >> 16);
+                    let bl = c + ((u * 138438) >> 16);
+                    let o = x * 4;
+                    rrow[o] = r.clamp(0, 255) as u8;
+                    rrow[o + 1] = g.clamp(0, 255) as u8;
+                    rrow[o + 2] = bl.clamp(0, 255) as u8;
+                    rrow[o + 3] = 255;
+                }
+            });
         let _ = b.Unlock();
         Some(Frame {
             width: w as u32,

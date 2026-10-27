@@ -78,11 +78,7 @@ impl Remote {
 
 /// 接続を別スレッドで試行し、結果をチャネルで返す（UIをブロックしない）。
 /// `token` が空ならパスワード認証で取得する。
-pub fn connect(
-    base: String,
-    token: String,
-    password: String,
-) -> Receiver<Result<Remote, String>> {
+pub fn connect(base: String, token: String, password: String) -> Receiver<Result<Remote, String>> {
     let (done_tx, done_rx) = channel();
     std::thread::spawn(move || {
         let result = handshake(&base, &token, &password);
@@ -188,8 +184,7 @@ fn video_thread(url: String, stop: Arc<AtomicBool>, shared: Shared) {
     };
     // 停止検知のため読み取りにタイムアウトを設定
     if let tungstenite::stream::MaybeTlsStream::Plain(sock) = ws.get_mut() {
-        let _ = sock
-            .set_read_timeout(Some(std::time::Duration::from_millis(500)));
+        let _ = sock.set_read_timeout(Some(std::time::Duration::from_millis(500)));
         let _ = sock.set_nodelay(true);
     }
     let mut dec: Option<crate::mfdec::H264Decoder> = None;
@@ -334,7 +329,10 @@ fn dispatch(job: &Job, base: &str, token: &str, shared: &Shared) -> bool {
                 Ok(resp) if resp.status().is_success() => {
                     shared.say(format!("{name} を送信しました"))
                 }
-                Ok(resp) => shared.say(format!("{name} の送信を拒否されました（HTTP {}）", resp.status())),
+                Ok(resp) => shared.say(format!(
+                    "{name} の送信を拒否されました（HTTP {}）",
+                    resp.status()
+                )),
                 Err(e) => shared.say(format!("{name} の送信に失敗: {e}")),
             }
             false

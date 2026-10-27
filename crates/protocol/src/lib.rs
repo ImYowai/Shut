@@ -155,7 +155,7 @@ mod connection {
                 "ephemeral" if !ephemeral && value == "1" => ephemeral = true,
                 _ => {
                     return Err(
-                        "接続URLに未対応の項目があります。PCからURLをコピーし直してください。"
+                        "接続URLに未対応の項目があります。PCからURLをコピーし直してください。",
                     );
                 }
             }
@@ -230,8 +230,7 @@ mod tests {
     #[test]
     fn ephemeral_contract_is_appended_once() {
         for query in [format!("t={TOKEN}"), format!("t={TOKEN}&ephemeral=1")] {
-            let target =
-                validate_connection(&format!("https://example.com/?{query}")).unwrap();
+            let target = validate_connection(&format!("https://example.com/?{query}")).unwrap();
             let url = url::Url::parse(&target.ephemeral_url()).unwrap();
             let pairs: Vec<_> = url.query_pairs().collect();
             assert_eq!(

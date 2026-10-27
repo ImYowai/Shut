@@ -11,6 +11,7 @@ fn main() {
 #[component]
 fn App() -> Element {
     let mut input = use_signal(String::new);
+    let mut password = use_signal(String::new);
     let mut candidate = use_signal(|| None::<ConnectionTarget>);
     let mut message = use_signal(String::new);
     let mut scanning = use_signal(|| false);
@@ -88,7 +89,7 @@ fn App() -> Element {
                 div { class: "input-row",
                     input {
                         id: "connection-url", r#type: "url",
-                        placeholder: "https://…/?t=…", autocomplete: "off", spellcheck: "false",
+                        placeholder: "http://192.168.x.x:47823", autocomplete: "off", spellcheck: "false",
                         autocapitalize: "none", inputmode: "url",
                         // 制御付き(value: input())にすると Rust→DOM の書き戻しが
                         // 入力中の文字を巻き戻して落とすことがあるため、DOM側の値を信頼する。
@@ -103,6 +104,14 @@ fn App() -> Element {
                             Err(error) => { candidate.set(None); message.set(error.into()); }
                         },
                         "確認"
+                    }
+                }
+                div { class: "input-row", style: "margin-top:10px",
+                    input {
+                        id: "connection-password", r#type: "password",
+                        placeholder: "接続パスワード", autocomplete: "off", spellcheck: "false",
+                        autocapitalize: "none",
+                        oninput: move |event| password.set(event.value()),
                     }
                 }
             }
@@ -121,26 +130,36 @@ fn App() -> Element {
                             "消す"
                         }
                     }
-                    for url in recents() {
+                    for entry in recents() {
                         button {
                             class: "recent-row",
-                            onclick: move |_| match validate_connection(&url) {
-                                Ok(target) => { candidate.set(Some(target)); message.set(String::new()); }
-                                Err(_) => {
-                                    // 無効な履歴は端末側の一覧からも除去する
-                                    let kept: Vec<String> =
-                                        recents().into_iter().filter(|u| *u != url).collect();
-                                    native::forget_recent();
-                                    for entry in kept.iter().rev() {
-                                        native::record_recent(entry);
+                            onclick: move |_| {
+                                // 履歴は "url\tpassword" 形式（旧形式はurlのみ）
+                                let (url, pw) = entry
+                                    .split_once('\t')
+                                    .map(|(u, p)| (u.to_string(), p.to_string()))
+                                    .unwrap_or_else(|| (entry.clone(), String::new()));
+                                match validate_connection(&url) {
+                                    Ok(target) => {
+                                        password.set(pw);
+                                        candidate.set(Some(target));
+                                        message.set(String::new());
                                     }
-                                    recents.set(kept);
+                                    Err(_) => {
+                                        let kept: Vec<String> =
+                                            recents().into_iter().filter(|u| *u != entry).collect();
+                                        native::forget_recent();
+                                        for item in kept.iter().rev() {
+                                            native::record_recent(item);
+                                        }
+                                        recents.set(kept);
+                                    }
                                 }
                             },
                             span { class: "recent-endpoint",
-                                match validate_connection(&url) {
+                                match validate_connection(entry.split('\t').next().unwrap_or(&entry)) {
                                     Ok(target) => target.endpoint.clone(),
-                                    Err(_) => url.clone(),
+                                    Err(_) => entry.split('\t').next().unwrap_or(&entry).to_string(),
                                 }
                             }
                             span { class: "recent-action", "もう一度つなぐ" }
@@ -171,11 +190,15 @@ fn App() -> Element {
                         class: "primary",
                         onclick: move |_| {
                             if let Some(confirmed) = candidate() {
+                                if password().is_empty() {
+                                    message.set("接続パスワードを入力してください".into());
+                                    return;
+                                }
                                 let url = confirmed.ephemeral_url();
-                                match native::open(&url) {
+                                match native::open(&url, &password()) {
                                     // 入力欄はDOM側の値を保持するためsignalも消さず同期を保つ
                                     Ok(()) => {
-                                        native::record_recent(&url);
+                                        native::record_recent(&format!("{url}\t{}", password()));
                                         recents.set(native::recent());
                                         candidate.set(None);
                                         message.set(String::new());

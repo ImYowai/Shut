@@ -50,15 +50,16 @@ fn run() {
         std::thread::spawn(move || {
             let _ = stream.set_nodelay(true);
             let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(100)));
-            let Ok(mut ws) = tungstenite::accept(stream) else { return };
+            let Ok(mut ws) = tungstenite::accept(stream) else {
+                return;
+            };
             let mut sent = 0u64;
             loop {
                 // 新しいフレームが出るまで待機（最大100msで抜けて生存確認）
                 let next = framechan::wait_newer(sent, 100);
                 match next {
                     Some(f) => {
-                        let mut body =
-                            Vec::with_capacity(16 + f.rgba.len());
+                        let mut body = Vec::with_capacity(16 + f.rgba.len());
                         body.extend_from_slice(&f.w.to_le_bytes());
                         body.extend_from_slice(&f.h.to_le_bytes());
                         body.extend_from_slice(&f.seq.to_le_bytes());

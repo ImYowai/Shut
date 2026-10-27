@@ -4,10 +4,10 @@
 #![cfg(windows)]
 
 use rayon::prelude::*;
-use windows::core::Interface;
 use windows::Win32::Media::MediaFoundation::*;
 use windows::Win32::System::Com::*;
 use windows::Win32::System::Variant::VARIANT;
+use windows::core::Interface;
 
 pub struct Encoded {
     /// Annex-B バイト列 (SPS/PPS はキーフレーム時に前方へ付加済み)
@@ -60,12 +60,11 @@ pub fn new(width: u32, height: u32, fps: u32, bitrate: u32) -> Option<H264Encode
             let list = std::slice::from_raw_parts(acts, nacts as usize);
             for act in list.iter().flatten() {
                 if let Ok(t) = act.ActivateObject::<IMFTransform>()
-                    && let Some(e) =
-                        H264Encoder::configure(t, width, height, fps, bitrate)
-                    {
-                        CoTaskMemFree(Some(acts.cast()));
-                        return Some(e);
-                    }
+                    && let Some(e) = H264Encoder::configure(t, width, height, fps, bitrate)
+                {
+                    CoTaskMemFree(Some(acts.cast()));
+                    return Some(e);
+                }
             }
             CoTaskMemFree(Some(acts.cast()));
         }
@@ -87,92 +86,97 @@ impl H264Encoder {
         bitrate: u32,
     ) -> Option<H264Encoder> {
         unsafe {
+            // ---- 出力メディアタイプ (先に設定するのがMS H264 MFTの流儀) ----
+            let out = MFCreateMediaType().ok()?;
+            out.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video).ok()?;
+            out.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_H264).ok()?;
+            out.SetUINT64(&MF_MT_FRAME_SIZE, pack32(width, height))
+                .ok()?;
+            out.SetUINT64(&MF_MT_FRAME_RATE, pack32(fps, 1)).ok()?;
+            out.SetUINT64(&MF_MT_PIXEL_ASPECT_RATIO, pack32(1, 1))
+                .ok()?;
+            out.SetUINT32(&MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive.0 as u32)
+                .ok()?;
+            out.SetUINT32(&MF_MT_AVG_BITRATE, bitrate).ok()?;
+            t.SetOutputType(0, &out, 0).ok()?;
 
-        // ---- 出力メディアタイプ (先に設定するのがMS H264 MFTの流儀) ----
-        let out = MFCreateMediaType().ok()?;
-        out.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video).ok()?;
-        out.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_H264).ok()?;
-        out.SetUINT64(&MF_MT_FRAME_SIZE, pack32(width, height)).ok()?;
-        out.SetUINT64(&MF_MT_FRAME_RATE, pack32(fps, 1)).ok()?;
-        out.SetUINT64(&MF_MT_PIXEL_ASPECT_RATIO, pack32(1, 1)).ok()?;
-        out.SetUINT32(&MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive.0 as u32)
-            .ok()?;
-        out.SetUINT32(&MF_MT_AVG_BITRATE, bitrate).ok()?;
-        t.SetOutputType(0, &out, 0).ok()?;
+            // ---- 入力メディアタイプ: NV12 ----
+            let inp = MFCreateMediaType().ok()?;
+            inp.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video).ok()?;
+            inp.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_NV12).ok()?;
+            inp.SetUINT64(&MF_MT_FRAME_SIZE, pack32(width, height))
+                .ok()?;
+            inp.SetUINT64(&MF_MT_FRAME_RATE, pack32(fps, 1)).ok()?;
+            inp.SetUINT64(&MF_MT_PIXEL_ASPECT_RATIO, pack32(1, 1))
+                .ok()?;
+            inp.SetUINT32(&MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive.0 as u32)
+                .ok()?;
+            inp.SetUINT32(&MF_MT_DEFAULT_STRIDE, width).ok()?;
+            t.SetInputType(0, &inp, 0).ok()?;
 
-        // ---- 入力メディアタイプ: NV12 ----
-        let inp = MFCreateMediaType().ok()?;
-        inp.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video).ok()?;
-        inp.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_NV12).ok()?;
-        inp.SetUINT64(&MF_MT_FRAME_SIZE, pack32(width, height)).ok()?;
-        inp.SetUINT64(&MF_MT_FRAME_RATE, pack32(fps, 1)).ok()?;
-        inp.SetUINT64(&MF_MT_PIXEL_ASPECT_RATIO, pack32(1, 1)).ok()?;
-        inp.SetUINT32(&MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive.0 as u32)
-            .ok()?;
-        inp.SetUINT32(&MF_MT_DEFAULT_STRIDE, width).ok()?;
-        t.SetInputType(0, &inp, 0).ok()?;
-
-        // ---- 低遅延モード (リアルタイム配信に必須) ----
-        let codec_api = t.cast::<ICodecAPI>().ok();
-        if let Some(api) = &codec_api {
-            let r1 = api.SetValue(&CODECAPI_AVLowLatencyMode, &VARIANT::from(true));
-            // GOPは短めに (参加直後のキーフレーム待ちを抑える)
-            let r2 = api.SetValue(&CODECAPI_AVEncMPVGOPSize, &VARIANT::from(fps * 2));
-            // Bフレームを無効化して並べ替え遅延を潰す
-            let r3 =
-                api.SetValue(&CODECAPI_AVEncMPVDefaultBPictureCount, &VARIANT::from(0u32));
-            if std::env::var_os("SHUT_ENC_DEBUG").is_some() {
-                eprintln!("SetValue lowLatency={r1:?} gop={r2:?} bframes={r3:?}");
+            // ---- 低遅延モード (リアルタイム配信に必須) ----
+            let codec_api = t.cast::<ICodecAPI>().ok();
+            if let Some(api) = &codec_api {
+                let r1 = api.SetValue(&CODECAPI_AVLowLatencyMode, &VARIANT::from(true));
+                // GOPは短めに (参加直後のキーフレーム待ちを抑える)
+                let r2 = api.SetValue(&CODECAPI_AVEncMPVGOPSize, &VARIANT::from(fps * 2));
+                // Bフレームを無効化して並べ替え遅延を潰す
+                let r3 = api.SetValue(&CODECAPI_AVEncMPVDefaultBPictureCount, &VARIANT::from(0u32));
+                if std::env::var_os("SHUT_ENC_DEBUG").is_some() {
+                    eprintln!("SetValue lowLatency={r1:?} gop={r2:?} bframes={r3:?}");
+                }
             }
-        }
 
-        // ---- シーケンスヘッダ (SPS/PPS) を取得 ----
-        let cur = t.GetOutputCurrentType(0).ok()?;
-        let blob_len = cur.GetBlobSize(&MF_MT_MPEG_SEQUENCE_HEADER).unwrap_or(0);
-        let mut seq = vec![0u8; blob_len as usize];
-        if blob_len > 0 {
-            let _ = cur.GetBlob(&MF_MT_MPEG_SEQUENCE_HEADER, &mut seq, None);
-        }
-        let sps_pps = extract_annexb(&seq);
+            // ---- シーケンスヘッダ (SPS/PPS) を取得 ----
+            let cur = t.GetOutputCurrentType(0).ok()?;
+            let blob_len = cur.GetBlobSize(&MF_MT_MPEG_SEQUENCE_HEADER).unwrap_or(0);
+            let mut seq = vec![0u8; blob_len as usize];
+            if blob_len > 0 {
+                let _ = cur.GetBlob(&MF_MT_MPEG_SEQUENCE_HEADER, &mut seq, None);
+            }
+            let sps_pps = extract_annexb(&seq);
 
-        // ---- 出力ストリーム情報: サンプルを自前で用意するか ----
-        let info = t.GetOutputStreamInfo(0).ok()?;
-        let mft_provides_samples =
-            (info.dwFlags & MFT_OUTPUT_STREAM_PROVIDES_SAMPLES.0 as u32) != 0;
-        let out_sample_size = info.cbSize.max(1 << 20) as usize;
+            // ---- 出力ストリーム情報: サンプルを自前で用意するか ----
+            let info = t.GetOutputStreamInfo(0).ok()?;
+            let mft_provides_samples =
+                (info.dwFlags & MFT_OUTPUT_STREAM_PROVIDES_SAMPLES.0 as u32) != 0;
+            let out_sample_size = info.cbSize.max(1 << 20) as usize;
 
-        // ---- 非同期MFTかどうか: 非同期ならイベント駆動に切り替える ----
-        let attrs = t.GetAttributes().ok();
-        let is_async = attrs
-            .as_ref()
-            .and_then(|a| a.GetUINT32(&MF_TRANSFORM_ASYNC).ok())
-            .map(|v| v != 0)
-            .unwrap_or(false);
-        let evgen = if is_async {
-            attrs.as_ref()?.SetUINT32(&MF_TRANSFORM_ASYNC_UNLOCK, 1).ok()?;
-            t.cast::<IMFMediaEventGenerator>().ok()
-        } else {
-            None
-        };
+            // ---- 非同期MFTかどうか: 非同期ならイベント駆動に切り替える ----
+            let attrs = t.GetAttributes().ok();
+            let is_async = attrs
+                .as_ref()
+                .and_then(|a| a.GetUINT32(&MF_TRANSFORM_ASYNC).ok())
+                .map(|v| v != 0)
+                .unwrap_or(false);
+            let evgen = if is_async {
+                attrs
+                    .as_ref()?
+                    .SetUINT32(&MF_TRANSFORM_ASYNC_UNLOCK, 1)
+                    .ok()?;
+                t.cast::<IMFMediaEventGenerator>().ok()
+            } else {
+                None
+            };
 
-        t.ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0)
-            .ok()?;
+            t.ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0)
+                .ok()?;
 
-        let frame_duration = 10_000_000i64 / fps.max(1) as i64;
-        Some(H264Encoder {
-            t,
-            codec_api,
-            evgen,
-            is_async,
-            pending: std::collections::VecDeque::new(),
-            sps_pps,
-            out_sample_size,
-            mft_provides_samples,
-            time: 0,
-            frame_duration,
-            width,
-            height,
-        })
+            let frame_duration = 10_000_000i64 / fps.max(1) as i64;
+            Some(H264Encoder {
+                t,
+                codec_api,
+                evgen,
+                is_async,
+                pending: std::collections::VecDeque::new(),
+                sps_pps,
+                out_sample_size,
+                mft_provides_samples,
+                time: 0,
+                frame_duration,
+                width,
+                height,
+            })
         }
     }
 }
@@ -184,7 +188,10 @@ fn pack32(hi: u32, lo: u32) -> u64 {
 /// シーケンスヘッダblobからAnnex-B形式のSPS/PPSを取り出す。
 /// blob は start-code 区切りか 4バイト長+NAL の並びのいずれか。
 fn extract_annexb(blob: &[u8]) -> Vec<u8> {
-    if blob.windows(4).any(|w| w == [0, 0, 0, 1] || w[..3] == [0, 0, 1]) {
+    if blob
+        .windows(4)
+        .any(|w| w == [0, 0, 0, 1] || w[..3] == [0, 0, 1])
+    {
         return blob.to_vec(); // 既にAnnex-B
     }
     // 4バイトBE長 + NAL の並びとして読む
@@ -271,61 +278,70 @@ impl H264Encoder {
     }
 
     /// 同期モード: 直接 ProcessInput/ProcessOutput。
-    unsafe fn encode_sync(&mut self, nv12: &[u8], out: &mut Vec<Encoded>) { unsafe {
-        let sample = match self.make_input(nv12) {
-            Some(s) => s,
-            None => return,
-        };
-        let pi = self.t.ProcessInput(0, &sample, 0);
-        if std::env::var_os("SHUT_ENC_DEBUG").is_some() {
-            eprintln!("PI: {pi:?}");
-        }
-        match pi {
-            Ok(()) => {}
-            Err(e) if e.code() == MF_E_TRANSFORM_NEED_MORE_INPUT => {}
-            Err(e) if e.code() == MF_E_NOTACCEPTING => {
-                self.drain(out);
-                let _ = self.t.ProcessInput(0, &sample, 0);
+    unsafe fn encode_sync(&mut self, nv12: &[u8], out: &mut Vec<Encoded>) {
+        unsafe {
+            let sample = match self.make_input(nv12) {
+                Some(s) => s,
+                None => return,
+            };
+            let pi = self.t.ProcessInput(0, &sample, 0);
+            if std::env::var_os("SHUT_ENC_DEBUG").is_some() {
+                eprintln!("PI: {pi:?}");
             }
-            Err(_) => return,
+            match pi {
+                Ok(()) => {}
+                Err(e) if e.code() == MF_E_TRANSFORM_NEED_MORE_INPUT => {}
+                Err(e) if e.code() == MF_E_NOTACCEPTING => {
+                    self.drain(out);
+                    let _ = self.t.ProcessInput(0, &sample, 0);
+                }
+                Err(_) => return,
+            }
+            self.drain(out);
+            self.time += self.frame_duration;
         }
-        self.drain(out);
-        self.time += self.frame_duration;
-    }}
+    }
 
     /// 非同期MFTのイベントポンプ (イベントが来るまで最大 budget ms 待つ)
-    unsafe fn pump_wait(&mut self, out: &mut Vec<Encoded>, budget: u32) { unsafe {
-        let Some(evgen) = self.evgen.clone() else { return };
-        for _ in 0..budget.max(1) {
-            match evgen.GetEvent(MF_EVENT_FLAG_NO_WAIT) {
-                Ok(ev) => {
-                    match ev.GetType().map(|t| t as i32) {
-                        Ok(601) => {
-                            // METransformNeedInput
-                            if let Some(nv) = self.pending.pop_front()
-                                && let Some(s) = self.make_input(&nv) {
+    unsafe fn pump_wait(&mut self, out: &mut Vec<Encoded>, budget: u32) {
+        unsafe {
+            let Some(evgen) = self.evgen.clone() else {
+                return;
+            };
+            for _ in 0..budget.max(1) {
+                match evgen.GetEvent(MF_EVENT_FLAG_NO_WAIT) {
+                    Ok(ev) => {
+                        match ev.GetType().map(|t| t as i32) {
+                            Ok(601) => {
+                                // METransformNeedInput
+                                if let Some(nv) = self.pending.pop_front()
+                                    && let Some(s) = self.make_input(&nv)
+                                {
                                     let _ = self.t.ProcessInput(0, &s, 0);
                                 }
+                            }
+                            Ok(602) => self.drain(out), // METransformHaveOutput
+                            _ => {}
                         }
-                        Ok(602) => self.drain(out), // METransformHaveOutput
-                        _ => {}
                     }
-                }
-                Err(_) => {
-                    if self.pending.is_empty() && !out.is_empty() {
-                        break;
+                    Err(_) => {
+                        if self.pending.is_empty() && !out.is_empty() {
+                            break;
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(1));
                     }
-                    std::thread::sleep(std::time::Duration::from_millis(1));
                 }
             }
+            self.time += self.frame_duration;
         }
-        self.time += self.frame_duration;
-    }}
+    }
 
     /// 非同期MFT: 溜まったイベントを捌き、出力がまだ無ければ最大 ~16ms 待つ
-    unsafe fn pump(&mut self, out: &mut Vec<Encoded>) { unsafe {
-        self.pump_wait(out, 16);
-    }}
+    unsafe fn pump(&mut self, out: &mut Vec<Encoded>) {
+        unsafe {
+            self.pump_wait(out, 16);
+        }
+    }
 
     /// 入力サンプル作成。
     fn make_input(&self, nv12: &[u8]) -> Option<IMFSample> {
@@ -345,50 +361,48 @@ impl H264Encoder {
     }
 
     /// 出力を全部引き出す。
-    unsafe fn drain(&mut self, out: &mut Vec<Encoded>) { unsafe {
-        loop {
-            // MFTがサンプルを供給しない構成なら自前で用意する
-            let p_sample = if self.mft_provides_samples {
-                None
-            } else {
-                let s = MFCreateSample().unwrap();
-                let b = MFCreateMemoryBuffer(self.out_sample_size as u32).unwrap();
-                s.AddBuffer(&b).unwrap();
-                Some(s)
-            };
-            let mut arr = [MFT_OUTPUT_DATA_BUFFER {
-                dwStreamID: 0,
-                pSample: std::mem::ManuallyDrop::new(p_sample),
-                dwStatus: 0,
-                pEvents: std::mem::ManuallyDrop::new(None),
-            }];
-            let mut status = 0u32;
-            let r = self.t.ProcessOutput(0, &mut arr, &mut status);
-            if std::env::var_os("SHUT_ENC_DEBUG").is_some() {
-                let n = arr[0]
-                    .pSample
-                    .as_ref()
-                    .and_then(|s| s.GetBufferCount().ok())
-                    .unwrap_or(0);
-                eprintln!(
-                    "PO: {r:?} dwStatus={:#x} pdwStatus={status:#x} bufs={n}",
-                    arr[0].dwStatus
-                );
-            }
-            match r {
-                Ok(()) => {
-                    if let Some(s) = arr[0].pSample.as_ref()
-                        && let Some(bytes) = sample_bytes(s) {
+    unsafe fn drain(&mut self, out: &mut Vec<Encoded>) {
+        unsafe {
+            loop {
+                // MFTがサンプルを供給しない構成なら自前で用意する
+                let p_sample = if self.mft_provides_samples {
+                    None
+                } else {
+                    let s = MFCreateSample().unwrap();
+                    let b = MFCreateMemoryBuffer(self.out_sample_size as u32).unwrap();
+                    s.AddBuffer(&b).unwrap();
+                    Some(s)
+                };
+                let mut arr = [MFT_OUTPUT_DATA_BUFFER {
+                    dwStreamID: 0,
+                    pSample: std::mem::ManuallyDrop::new(p_sample),
+                    dwStatus: 0,
+                    pEvents: std::mem::ManuallyDrop::new(None),
+                }];
+                let mut status = 0u32;
+                let r = self.t.ProcessOutput(0, &mut arr, &mut status);
+                if std::env::var_os("SHUT_ENC_DEBUG").is_some() {
+                    let n = arr[0]
+                        .pSample
+                        .as_ref()
+                        .and_then(|s| s.GetBufferCount().ok())
+                        .unwrap_or(0);
+                    eprintln!(
+                        "PO: {r:?} dwStatus={:#x} pdwStatus={status:#x} bufs={n}",
+                        arr[0].dwStatus
+                    );
+                }
+                match r {
+                    Ok(()) => {
+                        if let Some(s) = arr[0].pSample.as_ref()
+                            && let Some(bytes) = sample_bytes(s)
+                        {
                             if std::env::var_os("SHUT_ENC_DEBUG").is_some() {
-                                let head: Vec<String> = bytes
-                                    .iter()
-                                    .take(32)
-                                    .map(|b| format!("{b:02x}"))
-                                    .collect();
+                                let head: Vec<String> =
+                                    bytes.iter().take(32).map(|b| format!("{b:02x}")).collect();
                                 eprintln!("  raw {}B [{}]", bytes.len(), head.join(" "));
                             }
-                            let key =
-                                s.GetUINT32(&MFSampleExtension_CleanPoint).unwrap_or(0) != 0;
+                            let key = s.GetUINT32(&MFSampleExtension_CleanPoint).unwrap_or(0) != 0;
                             let mut data = Vec::with_capacity(bytes.len() + 16);
                             if key && !self.sps_pps.is_empty() {
                                 data.extend_from_slice(&self.sps_pps);
@@ -399,11 +413,12 @@ impl H264Encoder {
                                 keyframe: key,
                             });
                         }
+                    }
+                    Err(_) => break, // NEED_MORE_INPUT でも異常終了でも抜ける
                 }
-                Err(_) => break, // NEED_MORE_INPUT でも異常終了でも抜ける
             }
         }
-    }}
+    }
 }
 
 /// IMFSample の全バッファを連結して返す。
@@ -440,24 +455,26 @@ pub fn bgra_to_nv12(bgra: &[u8], w: usize, h: usize) -> Vec<u8> {
 
     // UV プレーン: NV12はUVインターリーブ。2x2ブロックの平均で半解像度
     let uvw = w / 2;
-    uv.par_chunks_mut(w).enumerate().for_each(|(row_uv, uvrow)| {
-        // row_uv = UV面の行index; 元画像では 2*row_uv 行目のペア
-        let y0 = row_uv * 2;
-        for x in 0..uvw {
-            let mut su = 0i32;
-            let mut sv = 0i32;
-            for dy in 0..2 {
-                for dx in 0..2 {
-                    let px = &bgra[((y0 + dy) * w + (x * 2 + dx)) * 4..][..4];
-                    let (b, g, r) = (px[0] as i32, px[1] as i32, px[2] as i32);
-                    su += (-38 * r - 74 * g + 112 * b + 128) >> 8;
-                    sv += (112 * r - 94 * g - 18 * b + 128) >> 8;
+    uv.par_chunks_mut(w)
+        .enumerate()
+        .for_each(|(row_uv, uvrow)| {
+            // row_uv = UV面の行index; 元画像では 2*row_uv 行目のペア
+            let y0 = row_uv * 2;
+            for x in 0..uvw {
+                let mut su = 0i32;
+                let mut sv = 0i32;
+                for dy in 0..2 {
+                    for dx in 0..2 {
+                        let px = &bgra[((y0 + dy) * w + (x * 2 + dx)) * 4..][..4];
+                        let (b, g, r) = (px[0] as i32, px[1] as i32, px[2] as i32);
+                        su += (-38 * r - 74 * g + 112 * b + 128) >> 8;
+                        sv += (112 * r - 94 * g - 18 * b + 128) >> 8;
+                    }
                 }
+                uvrow[x * 2] = ((su / 4) + 128).clamp(0, 255) as u8;
+                uvrow[x * 2 + 1] = ((sv / 4) + 128).clamp(0, 255) as u8;
             }
-            uvrow[x * 2] = ((su / 4) + 128).clamp(0, 255) as u8;
-            uvrow[x * 2 + 1] = ((sv / 4) + 128).clamp(0, 255) as u8;
-        }
-    });
+        });
 
     let mut nv12 = Vec::with_capacity(y.len() + uv.len());
     nv12.extend_from_slice(&y);

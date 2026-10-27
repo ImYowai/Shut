@@ -8,8 +8,8 @@ use std::collections::HashMap;
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
 
-use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use argon2::Argon2;
+use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 
 /// セッショントークンの有効期間（発行から24時間）
 const TOKEN_TTL: Duration = Duration::from_secs(24 * 3600);
@@ -30,7 +30,12 @@ impl AuthState {
     }
 
     /// 認証試行。Ok(token) か Err(待ち秒 or 理由)。
-    pub fn attempt(&mut self, ip: IpAddr, password: &str, hash: Option<&str>) -> Result<String, String> {
+    pub fn attempt(
+        &mut self,
+        ip: IpAddr,
+        password: &str,
+        hash: Option<&str>,
+    ) -> Result<String, String> {
         let now = Instant::now();
         if let Some((_, next_ok)) = self.failures.get(&ip)
             && now < *next_ok
@@ -44,6 +49,10 @@ impl AuthState {
             None => return Err("ホスト側でパスワードが未設定です".into()),
         };
         if !ok {
+            // 失敗記録が際限なく膨らまないよう、期限切れを掃除する
+            if self.failures.len() > 4096 {
+                self.failures.retain(|_, (_, t)| *t > now);
+            }
             let (n, _) = self.failures.get(&ip).copied().unwrap_or((0, now));
             let n = n + 1;
             // 3回失敗ごとに 2^n 秒待たせる（最大 ~4分）

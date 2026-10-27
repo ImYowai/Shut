@@ -24,9 +24,7 @@ pub fn start(state: &AppState) -> Result<HostInfo, String> {
 
 fn start_inner(state: &AppState) -> Result<HostInfo, String> {
     let (listener, port) = bind_listener();
-    listener
-        .set_nonblocking(true)
-        .map_err(|e| e.to_string())?;
+    listener.set_nonblocking(true).map_err(|e| e.to_string())?;
     let lan_url = remote::lan_ip()
         .map(|ip| format!("http://{ip}:{port}"))
         .unwrap_or_else(|| format!("http://127.0.0.1:{port}"));
@@ -52,8 +50,7 @@ fn start_inner(state: &AppState) -> Result<HostInfo, String> {
             .expect("tokio runtime");
         rt.block_on(async move {
             let tl = tokio::net::TcpListener::from_std(listener).unwrap();
-            let app = server::router(ctx)
-                .into_make_service_with_connect_info::<SocketAddr>();
+            let app = server::router(ctx).into_make_service_with_connect_info::<SocketAddr>();
             let _ = axum::serve(tl, app).await;
         });
     });

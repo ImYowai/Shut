@@ -7,7 +7,7 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{ConnectInfo, DefaultBodyLimit, Query, Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::middleware::{self, Next};
-use axum::response::{IntoResponse, Response};
+use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use futures_util::{SinkExt, StreamExt};
@@ -27,8 +27,22 @@ pub struct ServerCtx {
 
 type Ctx = Arc<ServerCtx>;
 
+/// Android/WebViewクライアント向けのセルフホスト操作画面。
+const INDEX_HTML: &str = include_str!("../ui/index.html");
+const SHELL_CSS: &str = include_str!("../ui/shell.css");
+const SHELL_JS: &str = include_str!("../ui/shell.js");
+
 pub fn router(ctx: Ctx) -> Router {
     Router::new()
+        .route("/", get(index))
+        .route(
+            "/shell.css",
+            get(|| async { ([("content-type", "text/css")], SHELL_CSS) }),
+        )
+        .route(
+            "/shell.js",
+            get(|| async { ([("content-type", "application/javascript")], SHELL_JS) }),
+        )
         .route("/api/auth", post(api_auth))
         .route("/api/state", get(api_state))
         .route("/api/settings", post(api_settings))
@@ -62,8 +76,12 @@ async fn auth(
     req: Request,
     next: Next,
 ) -> Response {
-    // /api/auth だけ無認証（パスワードを検証してトークンを発行する）
-    if req.uri().path() == "/api/auth" {
+    // 静的ページと認証入口は無認証。ページはAPIを呼べないだけの殻で、
+    // 機微な操作・データは全てトークン必須。
+    if matches!(
+        req.uri().path(),
+        "/" | "/shell.css" | "/shell.js" | "/api/auth"
+    ) {
         return next.run(req).await;
     }
     let candidate = q
@@ -80,12 +98,12 @@ async fn auth(
                 .get(header::COOKIE)
                 .and_then(|v| v.to_str().ok())
                 .and_then(|c| {
-                    c.split(';').find_map(|p| p.trim().strip_prefix("shut_token=")).map(str::to_string)
+                    c.split(';')
+                        .find_map(|p| p.trim().strip_prefix("shut_token="))
+                        .map(str::to_string)
                 })
         });
-    let ok = candidate.is_some_and(|t| {
-        ctx.state.lock().unwrap().auth.valid_token(&t)
-    });
+    let ok = candidate.is_some_and(|t| ctx.state.lock().unwrap().auth.valid_token(&t));
     if ok {
         next.run(req).await
     } else {
@@ -108,7 +126,10 @@ async fn api_auth(
         .and_then(|v| v.as_str())
         .unwrap_or_default();
     if pw.is_empty() || pw.len() > 256 {
-        return (StatusCode::BAD_REQUEST, Json(json!({"error": "password required"})))
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "password required"})),
+        )
             .into_response();
     }
     let mut st = ctx.state.lock().unwrap();
@@ -120,6 +141,12 @@ async fn api_auth(
             (StatusCode::UNAUTHORIZED, Json(json!({"error": e}))).into_response()
         }
     }
+}
+
+// ---------- ページ ----------
+
+async fn index() -> impl IntoResponse {
+    Html(INDEX_HTML)
 }
 
 // ---------- API ----------
@@ -158,6 +185,12 @@ async fn api_state(State(ctx): State<Ctx>) -> Json<serde_json::Value> {
         TunnelState::Failed(e) => ("failed", None, Some(e.clone())),
     };
 
+    // 設定のうちパスワードハッシュはクライアントへ出さない（オフライン解析を防ぐ）
+    let mut settings_json = serde_json::to_value(&st.settings).unwrap_or_default();
+    if let Some(obj) = settings_json.as_object_mut() {
+        obj.remove("password_hash");
+    }
+
     Json(json!({
         "phase": phase,
         "reason": reason,
@@ -176,12 +209,18 @@ async fn api_state(State(ctx): State<Ctx>) -> Json<serde_json::Value> {
         "lan_url": ctx.lan_url,
         "port": ctx.port,
         "password_set": st.settings.password_hash.is_some(),
-        "settings": st.settings,
+        "settings": settings_json,
     }))
 }
 
-async fn api_settings(State(ctx): State<Ctx>, Json(settings): Json<Settings>) -> impl IntoResponse {
+async fn api_settings(
+    State(ctx): State<Ctx>,
+    Json(mut settings): Json<Settings>,
+) -> impl IntoResponse {
     let mut st = ctx.state.lock().unwrap();
+    // パスワード変更はホスト側UI/CLIのみ — APIからのハッシュ上書きは拒否
+    // （認証済みセッションによる恒久的な乗っ取りを防ぐ）
+    settings.password_hash = st.settings.password_hash.clone();
     st.settings = settings;
     st.settings.save();
     Json(json!({"ok": true}))
@@ -288,10 +327,7 @@ async fn api_input(State(ctx): State<Ctx>, Json(ev): Json<InputEvent>) -> impl I
 // 下り: 接続直後にJSON設定 -> 以後 [flags][Annex-B] のバイナリ連打
 // 上り: テキストJSONの InputEvent (HTTP POST /input と等価だが遅延が小さい)
 
-async fn ws_video(
-    ws: WebSocketUpgrade,
-    State(ctx): State<Ctx>,
-) -> impl IntoResponse {
+async fn ws_video(ws: WebSocketUpgrade, State(ctx): State<Ctx>) -> impl IntoResponse {
     ws.on_upgrade(move |socket| video_socket(socket, ctx))
 }
 
@@ -356,10 +392,7 @@ async fn video_socket(mut socket: WebSocket, ctx: Ctx) {
                     continue;
                 }
                 if let Ok(ev) = serde_json::from_str::<InputEvent>(&t) {
-                    let _ = tokio::task::spawn_blocking(move || {
-                        remote::handle_input(&ev)
-                    })
-                    .await;
+                    let _ = tokio::task::spawn_blocking(move || remote::handle_input(&ev)).await;
                 }
             }
             Ok(Message::Close(_)) | Err(_) => break,

@@ -26,14 +26,19 @@ class RemoteActivity : Activity() {
     private var entry: Uri? = null
     private var failed = false
     private var fileCallback: ValueCallback<Array<Uri>>? = null
+    /** 認証ページへ自動入力するパスワード（注入後は即破棄）。 */
+    private var pendingPassword: String? = null
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(null)
         // プロセス再生成・システムによる復帰では pending が空になるため、
         // アプリ専用領域の直近接続へ自動で再接続する（クラッシュ復帰用）。
-        val url = ConnectionSession.take() ?: ConnectionSession.recents(this).firstOrNull()
-        if (url == null) { finish(); return }
+        val session = ConnectionSession.take()
+            ?: ConnectionSession.recents(this).firstOrNull()?.let(ConnectionSession::parseEntry)
+        if (session == null) { finish(); return }
+        val url = session.url
+        pendingPassword = session.password.ifEmpty { null }
         entry = Uri.parse(url)
         WebView.setWebContentsDebuggingEnabled(false)
         val view = WebView(this)
@@ -87,7 +92,16 @@ class RemoteActivity : Activity() {
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                 if (request.isForMainFrame) fail("PCに接続できませんでした。PC側のShut、接続URL、ネットワークを確認してください。")
             }
-            override fun onPageFinished(view: WebView, url: String) { view.clearHistory() }
+            override fun onPageFinished(view: WebView, url: String) {
+                view.clearHistory()
+                val pw = pendingPassword ?: return
+                pendingPassword = null
+                // 認証ページの shutLogin() へパスワードを注入。
+                // URLやhistoryには乗せず、ページ内fetchで /api/auth へ送られる。
+                view.evaluateJavascript(
+                    "window.shutLogin && window.shutLogin(" + org.json.JSONObject.quote(pw) + ")", null
+                )
+            }
         }
         setContentView(view)
         // 操作中に画面が消えないようにする（接続画面だけ消灯抑止）
@@ -109,8 +123,10 @@ class RemoteActivity : Activity() {
         return url.scheme in listOf("http", "https") && url.scheme == approved.scheme &&
             url.host == approved.host && effectivePort(url) == effectivePort(approved) && url.userInfo == null
     }
+    // shutLogin 成功後の ?t= への遷移を許可するため、クエリ一致は要求しない。
+    // 同一オリジンのトップページだけが遷移先。
     private fun allowedNavigation(url: Uri): Boolean = sameOrigin(url) &&
-        url.path in listOf("", "/") && url.fragment == null && url.query == entry?.query
+        url.path in listOf("", "/") && url.fragment == null
     private fun effectivePort(url: Uri): Int = if (url.port != -1) url.port else if (url.scheme == "https") 443 else 80
     private fun blocked() = WebResourceResponse("text/plain", "UTF-8", 403, "Blocked", emptyMap(), ByteArrayInputStream(ByteArray(0)))
     private fun fail(message: String) {
@@ -143,7 +159,7 @@ class RemoteActivity : Activity() {
             (parent as? android.view.ViewGroup)?.removeView(this)
             removeAllViews(); destroy()
         }
-        browser = null; entry = null; ConnectionSession.pending = null
+        browser = null; entry = null; pendingPassword = null; ConnectionSession.pending = null
         fileCallback?.onReceiveValue(null); fileCallback = null
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         super.onDestroy()

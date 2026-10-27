@@ -45,12 +45,7 @@ fn main() {
         let units = enc.encode(&f.data);
         total_out += units.len();
         for u in &units {
-            let head: Vec<String> = u
-                .data
-                .iter()
-                .take(10)
-                .map(|b| format!("{b:02x}"))
-                .collect();
+            let head: Vec<String> = u.data.iter().take(10).map(|b| format!("{b:02x}")).collect();
             println!(
                 "frame {fed} -> AU {}B key={} [{}]",
                 u.data.len(),
@@ -61,13 +56,13 @@ fn main() {
     }
     println!("--- fed={fed} out={total_out} --- drain ---");
     for u in enc.drain_all() {
-        let head: Vec<String> = u
-            .data
-            .iter()
-            .take(10)
-            .map(|b| format!("{b:02x}"))
-            .collect();
-        println!("drain -> AU {}B key={} [{}]", u.data.len(), u.keyframe, head.join(" "));
+        let head: Vec<String> = u.data.iter().take(10).map(|b| format!("{b:02x}")).collect();
+        println!(
+            "drain -> AU {}B key={} [{}]",
+            u.data.len(),
+            u.keyframe,
+            head.join(" ")
+        );
     }
 }
 
