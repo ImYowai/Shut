@@ -1,3 +1,15 @@
+# 2026-10-27 パスワード認証フロー統一・監視誤作動修正・v0.3.0リリース
+
+- Android → `/api/auth` 移行: Dioxus側に接続パスワード欄を追加。`RemoteActivity` がWebViewの `window.shutLogin` へパスワードをJS注入し `/api/auth` でセッショントークンを取得（URL・history・Intent・Bundleには載せない）。履歴は `url\tpassword` 形式でワンタップ再接続。ナビゲーション制限は同一オリジンの `/` に緩和（認証後の `?t=` 遷移を許可）。
+- ホストが `ui/index.html` を `/` で再配信（Android/ブラウザ用操作画面）。`shutLogin` + パスワード欄を実装し、旧 `?t=` 入力も後方互換で受理。
+- API強化: `/api/state` が `password_hash` を返さない。`/api/settings` が `password_hash` の上書きを拒否（認証済みセッションによる乗っ取り防止）。認証失敗マップに上限（4096件で期限切れ掃除）。
+- 監視誤作動の根本原因を修正: `FileWatcher` が全ファイル（arm前含む）の最新mtimeを `newest_mtime` に保持していたため、arm後ファイルの削除・ローテーションで古いファイルへ「後退」し `ago_secs` が瞬時に巨大化 → `saw_activity=true` 残留のまま即発火していた。arm後の書き込みのみを単調増加で追跡する `last_write` に変更。境界条件も `>=` → `>` に修正。
+- 検証（エミュレータ実機）: URL+パスワード入力→確認シート（HTTP警告）→WebView自動ログイン→ライブセッション、履歴からのワンタップ再接続→自動ログインまで実測。`docs/verification/android-emu-*.png`。
+- テスト: filewatch回帰4件追加（stale・post-arm write・削除後退・空）、計7件PASS。`cargo fmt/clippy` クリーン。
+- GitHub: `7c8c7ac` push、タグ `v0.3.0`、リリース https://github.com/ImYowai/Shut/releases/tag/v0.3.0 作成。
+
+未検証の残件: Androidでの実入力（マウス/キー/日本語）・ファイル送信の実機操作、トンネル経由接続、定量的遅延計測、エミュレータのSystemUI ANRはSwiftShaderの環境ノイズでアプリ非依存。
+
 # 2026-10-21 安定化・Android対応
 
 契約 v2: Windows側の既存APIと起動ごとのトークンを維持する。`/input` は成功を確認して応答し、UIは操作を順に送信する。タッチの上スワイプは下方向のスクロール。日本語の変換確定は送信しない。Androidの接続画面はDioxus、QRはAndroid SDKの薄いブリッジ、接続後はIPCを公開しない独立WebViewで既存UIを使う。Androidからは `ephemeral=1` を追加し、既存UIもlocalStorageを使わない。
