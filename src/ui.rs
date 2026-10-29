@@ -410,7 +410,15 @@ fn Host(on_back: EventHandler) -> Element {
                     },
                     TunnelState::Starting => rsx! { p { class: "hint", "開始しています…" } },
                     TunnelState::Running(u) => rsx! {
-                        p { class: "hint mono", "{u}" }
+                        div { class: "url-row",
+                            code { class: "big-url", "{u}" }
+                            if let Some(q) = qr_data_url(u) {
+                                img { class: "qr", src: "{q}", alt: "外部公開QR" }
+                            }
+                        }
+                        p { class: "hint",
+                            "HTTPSで暗号化されます。このQRをスキャンしてパスワードを入力すれば外部から接続できます。"
+                        }
                         button {
                             class: "quiet",
                             onclick: {
