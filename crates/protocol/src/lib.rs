@@ -228,6 +228,21 @@ mod tests {
         }
     }
     #[test]
+    fn bare_https_and_lan_urls_accept_tokenless_targets() {
+        // パスワード認証フロー: トークン無しの裸URLは受理する
+        for base in [
+            "https://membrane-referring-showcase-resort.trycloudflare.com",
+            "https://shut-demo.trycloudflare.com/",
+            "http://192.168.2.120:47823",
+            "http://10.0.0.5:47823/",
+        ] {
+            let target = validate_connection(base);
+            assert!(target.is_ok(), "expected accepted: {base} — {:?}", target.err());
+            let target = target.unwrap();
+            assert_eq!(target.token(), "");
+        }
+    }
+    #[test]
     fn ephemeral_contract_is_appended_once() {
         for query in [format!("t={TOKEN}"), format!("t={TOKEN}&ephemeral=1")] {
             let target = validate_connection(&format!("https://example.com/?{query}")).unwrap();
